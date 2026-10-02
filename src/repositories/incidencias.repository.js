@@ -31,12 +31,16 @@ const listar = async ({ limite, offset, q, tipoId, estado }) => {
   );
 
   const { rows } = await pool.query(
-    `SELECT i.id, i.codigo, i.prioridad, i.estado, i.fecha_registro, i.descripcion,
+    `SELECT i.id, i.codigo, i.prioridad, i.estado, i.fecha_registro, i.fecha_atencion, i.fecha_cierre, i.descripcion,
+            i.tipo_incidencia_id, i.servicio_id, i.personal_id, i.registrado_por,
             ti.nombre AS tipo,
-            s.nombre  AS servicio
+            s.nombre  AS servicio,
+            COALESCE(CONCAT(p.nombres, ' ', p.apellidos), u.nombre) AS personal_registra
      FROM incidencias i
      JOIN tipos_incidencia ti ON i.tipo_incidencia_id = ti.id
      JOIN servicios s ON i.servicio_id = s.id
+     LEFT JOIN personal p ON i.personal_id = p.id
+     LEFT JOIN usuarios u ON i.registrado_por = u.id
      WHERE ${where}
      ORDER BY i.fecha_registro DESC
      LIMIT $${idx} OFFSET $${idx + 1}`,
@@ -63,9 +67,12 @@ const obtenerResumen = async () => {
 
 const obtenerRecientes = async (limite = 5) => {
   const { rows } = await pool.query(
-    `SELECT i.codigo, ti.nombre AS tipo, i.fecha_registro, i.prioridad, i.estado
+    `SELECT i.codigo, ti.nombre AS tipo, i.fecha_registro, i.prioridad, i.estado,
+            COALESCE(CONCAT(p.nombres, ' ', p.apellidos), u.nombre) AS personal_registra
      FROM incidencias i
      JOIN tipos_incidencia ti ON i.tipo_incidencia_id = ti.id
+     LEFT JOIN personal p ON i.personal_id = p.id
+     LEFT JOIN usuarios u ON i.registrado_por = u.id
      WHERE i.eliminado = FALSE
      ORDER BY i.fecha_registro DESC LIMIT $1`,
     [limite]
@@ -75,10 +82,13 @@ const obtenerRecientes = async (limite = 5) => {
 
 const obtenerPorId = async (id) => {
   const { rows } = await pool.query(
-    `SELECT i.*, ti.nombre AS tipo, s.nombre AS servicio
+    `SELECT i.*, ti.nombre AS tipo, s.nombre AS servicio,
+            COALESCE(CONCAT(p.nombres, ' ', p.apellidos), u.nombre) AS personal_registra
      FROM incidencias i
      JOIN tipos_incidencia ti ON i.tipo_incidencia_id = ti.id
      JOIN servicios s ON i.servicio_id = s.id
+     LEFT JOIN personal p ON i.personal_id = p.id
+     LEFT JOIN usuarios u ON i.registrado_por = u.id
      WHERE i.id = $1 AND i.eliminado = FALSE`,
     [id]
   );
@@ -90,22 +100,22 @@ const siguienteCodigo = async () => {
   return `INC-${String(rows[0].num).padStart(4, '0')}`;
 };
 
-const crear = async ({ codigo, tipoIncidenciaId, servicioId, descripcion, prioridad, registradoPor }) => {
+const crear = async ({ codigo, tipoIncidenciaId, servicioId, personalId, descripcion, prioridad, registradoPor }) => {
   const { rows } = await pool.query(
-    `INSERT INTO incidencias (codigo, tipo_incidencia_id, servicio_id, descripcion, prioridad, registrado_por)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [codigo, tipoIncidenciaId, servicioId, descripcion, prioridad, registradoPor]
+    `INSERT INTO incidencias (codigo, tipo_incidencia_id, servicio_id, personal_id, descripcion, prioridad, registrado_por)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [codigo, tipoIncidenciaId, servicioId, personalId || null, descripcion, prioridad, registradoPor]
   );
   return rows[0];
 };
 
-const actualizar = async (id, { tipoIncidenciaId, servicioId, descripcion, prioridad, estado }) => {
+const actualizar = async (id, { tipoIncidenciaId, servicioId, personalId, descripcion, prioridad, estado }) => {
   const { rows } = await pool.query(
     `UPDATE incidencias
-     SET tipo_incidencia_id = $1, servicio_id = $2, descripcion = $3,
-         prioridad = $4, estado = $5, actualizado_en = NOW()
-     WHERE id = $6 AND eliminado = FALSE RETURNING *`,
-    [tipoIncidenciaId, servicioId, descripcion, prioridad, estado, id]
+     SET tipo_incidencia_id = $1, servicio_id = $2, personal_id = COALESCE($3, personal_id),
+         descripcion = $4, prioridad = $5, estado = $6, actualizado_en = NOW()
+     WHERE id = $7 AND eliminado = FALSE RETURNING *`,
+    [tipoIncidenciaId, servicioId, personalId || null, descripcion, prioridad, estado, id]
   );
   return rows[0] || null;
 };
@@ -147,6 +157,14 @@ const listarTipos = async () => {
 };
 
 module.exports = {
-  listar, obtenerResumen, obtenerRecientes, obtenerPorId,
-  siguienteCodigo, crear, actualizar, cambiarEstado, eliminar, listarTipos,
+  listar,
+  obtenerResumen,
+  obtenerRecientes,
+  obtenerPorId,
+  siguienteCodigo,
+  crear,
+  actualizar,
+  cambiarEstado,
+  eliminar,
+  listarTipos,
 };

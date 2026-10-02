@@ -14,7 +14,8 @@ const listarPorSemana = async ({ desde, hasta, sedeId }) => {
   }
 
   const { rows } = await pool.query(
-    `SELECT t.id, t.fecha, t.hora_inicio, t.hora_fin, t.estado, t.relevo_pendiente,
+    `SELECT t.id, TO_CHAR(t.fecha, 'YYYY-MM-DD') AS fecha,
+            t.hora_inicio, t.hora_fin, t.estado, t.relevo_pendiente,
             t.personal_id, t.servicio_id, t.sede_id,
             CONCAT(p.nombres, ' ', p.apellidos) AS personal,
             s.nombre AS servicio

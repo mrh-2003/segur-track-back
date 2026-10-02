@@ -21,8 +21,52 @@ const perfil = async (req, res, next) => {
   }
 };
 
-const logout = (req, res) => {
-  respuestaExito(res, { mensaje: 'Sesión cerrada' });
+const actualizarPerfil = async (req, res, next) => {
+  try {
+    const actualizado = await authService.actualizarPerfil(req.usuario.id, req.body);
+    respuestaExito(res, actualizado);
+  } catch (err) {
+    next(err);
+  }
 };
 
-module.exports = { login, perfil, logout };
+const cambiarClave = async (req, res, next) => {
+  try {
+    const resultado = await authService.cambiarClave(req.usuario.id, req.body);
+    respuestaExito(res, resultado);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const solicitarRecuperacion = async (req, res, next) => {
+  try {
+    const resultado = await authService.solicitarRecuperacion(req.body);
+    respuestaExito(res, resultado);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const restablecerClave = async (req, res, next) => {
+  try {
+    const resultado = await authService.restablecerClave(req.body);
+    respuestaExito(res, resultado);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const logout = (req, res) => {
+  respuestaExito(res, { mensaje: 'Sesión cerrada correctamente' });
+};
+
+module.exports = {
+  login,
+  perfil,
+  actualizarPerfil,
+  cambiarClave,
+  solicitarRecuperacion,
+  restablecerClave,
+  logout,
+};

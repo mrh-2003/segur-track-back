@@ -1,17 +1,23 @@
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS usuarios (
-  id             SERIAL PRIMARY KEY,
-  nombre         VARCHAR(120) NOT NULL,
-  correo         VARCHAR(120) NOT NULL UNIQUE,
-  clave_hash     TEXT         NOT NULL,
-  rol            VARCHAR(20)  NOT NULL CHECK (rol IN ('administrador','supervisor','operador')),
-  activo         BOOLEAN      NOT NULL DEFAULT TRUE,
-  eliminado      BOOLEAN      NOT NULL DEFAULT FALSE,
-  eliminado_en   TIMESTAMPTZ,
-  eliminado_por  INT          REFERENCES usuarios(id),
-  creado_en      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  actualizado_en TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  id                  SERIAL PRIMARY KEY,
+  nombre              VARCHAR(120) NOT NULL,
+  correo              VARCHAR(120) NOT NULL UNIQUE,
+  clave_hash          TEXT         NOT NULL,
+  rol                 VARCHAR(20)  NOT NULL CHECK (rol IN ('administrador','supervisor','operador')),
+  activo              BOOLEAN      NOT NULL DEFAULT TRUE,
+  debe_cambiar_clave  BOOLEAN      NOT NULL DEFAULT FALSE,
+  codigo_recuperacion VARCHAR(30),
+  recuperacion_expira TIMESTAMPTZ,
+  eliminado           BOOLEAN      NOT NULL DEFAULT FALSE,
+  eliminado_en        TIMESTAMPTZ,
+  eliminado_por       INT          REFERENCES usuarios(id),
+  creado_en           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  actualizado_en      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS sedes (
@@ -43,6 +49,7 @@ CREATE TABLE IF NOT EXISTS personal (
   documento      VARCHAR(20)  NOT NULL,
   cargo          VARCHAR(20)  NOT NULL CHECK (cargo IN ('supervisor','agente','administrativo')),
   estado         VARCHAR(10)  NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','inactivo')),
+  correo         VARCHAR(120),
   sede_id        INT          NOT NULL REFERENCES sedes(id),
   usuario_id     INT          REFERENCES usuarios(id),
   eliminado      BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -122,6 +129,7 @@ CREATE TABLE IF NOT EXISTS incidencias (
   codigo              VARCHAR(10)  NOT NULL,
   tipo_incidencia_id  INT          NOT NULL REFERENCES tipos_incidencia(id),
   servicio_id         INT          NOT NULL REFERENCES servicios(id),
+  personal_id         INT          REFERENCES personal(id),
   descripcion         TEXT,
   prioridad           VARCHAR(5)   NOT NULL CHECK (prioridad IN ('alta','media','baja')),
   estado              VARCHAR(12)  NOT NULL DEFAULT 'abierta'

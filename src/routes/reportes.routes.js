@@ -8,7 +8,8 @@ const router = Router();
 
 router.get('/',           ctrl.listar);
 router.get('/historial',  ctrl.historial);
-router.post('/generar',   validar(ctrl.esquemaGenerar), ctrl.generar);
+router.post('/generar', validar(ctrl.esquemaGenerar), ctrl.generar);
+router.get('/descargar-directo', ctrl.descargarDirecto);
 router.get('/:id/descargar', ctrl.descargar);
 
 module.exports = router;

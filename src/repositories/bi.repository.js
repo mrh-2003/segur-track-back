@@ -41,24 +41,36 @@ const obtenerIndicadores = async ({ periodo, clienteId, servicioId }) => {
 
 const obtenerEvolucionCumplimiento = async () => {
   const { rows } = await pool.query(`
+    WITH turnos_agrupados AS (
+      SELECT
+        DATE_TRUNC('week', fecha::timestamp) AS semana,
+        ROUND(
+          COUNT(*) FILTER (WHERE estado = 'cumplido')::NUMERIC /
+          NULLIF(COUNT(*), 0) * 100, 1
+        ) AS turnos_pct
+      FROM turnos
+      WHERE eliminado = FALSE
+        AND fecha >= CURRENT_DATE - INTERVAL '12 weeks'
+      GROUP BY DATE_TRUNC('week', fecha::timestamp)
+    ),
+    servicios_agrupados AS (
+      SELECT
+        DATE_TRUNC('week', fecha_inicio::timestamp) AS semana,
+        ROUND(
+          COUNT(*) FILTER (WHERE estado = 'finalizado')::NUMERIC /
+          NULLIF(COUNT(*), 0) * 100, 1
+        ) AS servicios_pct
+      FROM servicios
+      WHERE eliminado = FALSE
+        AND fecha_inicio >= CURRENT_DATE - INTERVAL '12 weeks'
+      GROUP BY DATE_TRUNC('week', fecha_inicio::timestamp)
+    )
     SELECT
-      DATE_TRUNC('week', t.fecha) AS semana,
-      ROUND(
-        COUNT(*) FILTER (WHERE t.estado = 'cumplido')::NUMERIC /
-        NULLIF(COUNT(*), 0) * 100, 1
-      ) AS turnos_pct,
-      ROUND(
-        (SELECT COUNT(*) FILTER (WHERE s2.estado = 'finalizado')::NUMERIC /
-         NULLIF(COUNT(*), 0) * 100
-         FROM servicios s2
-         WHERE s2.eliminado = FALSE
-           AND DATE_TRUNC('week', s2.fecha_inicio) = DATE_TRUNC('week', t.fecha)
-        ), 1
-      ) AS servicios_pct
-    FROM turnos t
-    WHERE t.eliminado = FALSE
-      AND t.fecha >= CURRENT_DATE - INTERVAL '12 weeks'
-    GROUP BY DATE_TRUNC('week', t.fecha)
+      TO_CHAR(COALESCE(t.semana, s.semana), 'YYYY-MM-DD') AS semana,
+      COALESCE(t.turnos_pct, 0)::FLOAT AS turnos_pct,
+      COALESCE(s.servicios_pct, 0)::FLOAT AS servicios_pct
+    FROM turnos_agrupados t
+    FULL OUTER JOIN servicios_agrupados s ON t.semana = s.semana
     ORDER BY semana
   `);
   return rows;

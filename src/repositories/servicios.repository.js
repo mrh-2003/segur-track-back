@@ -31,7 +31,10 @@ const listar = async ({ limite, offset, q, clienteId, estado }) => {
   );
 
   const { rows } = await pool.query(
-    `SELECT s.id, s.nombre, s.hora_inicio, s.hora_fin, s.estado, s.fecha_inicio, s.fecha_fin,
+    `SELECT s.id, s.nombre, s.hora_inicio, s.hora_fin, s.estado,
+            TO_CHAR(s.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
+            TO_CHAR(s.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
+            s.cliente_id, s.sede_id, s.supervisor_id,
             c.id AS cliente_id, c.nombre AS cliente,
             se.nombre AS sede,
             CONCAT(p.nombres, ' ', p.apellidos) AS supervisor,
@@ -66,7 +69,11 @@ const obtenerResumen = async () => {
 
 const obtenerPorId = async (id) => {
   const { rows } = await pool.query(
-    `SELECT s.*, c.nombre AS cliente, se.nombre AS sede,
+    `SELECT s.id, s.nombre, s.cliente_id, s.sede_id, s.supervisor_id,
+            s.hora_inicio, s.hora_fin, s.estado,
+            TO_CHAR(s.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
+            TO_CHAR(s.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
+            c.nombre AS cliente, se.nombre AS sede,
             CONCAT(p.nombres, ' ', p.apellidos) AS supervisor,
             (SELECT COUNT(*) FROM servicio_personal sp
              WHERE sp.servicio_id = s.id AND sp.eliminado = FALSE) AS personal_asignado

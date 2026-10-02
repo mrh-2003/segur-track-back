@@ -12,7 +12,12 @@ const pool = new Pool({
   ssl:      env.DB_HOST !== 'localhost' ? { rejectUnauthorized: false } : false,
   max:      10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 15000,
+  keepAlive: true,
+});
+
+pool.on('error', (err) => {
+  // Manejo de error de cliente inactivo para evitar caídas
 });
 
 module.exports = pool;
