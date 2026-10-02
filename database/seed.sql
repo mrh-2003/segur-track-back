@@ -1,10 +1,10 @@
 INSERT INTO usuarios (nombre, correo, clave_hash, rol) VALUES
-  ('Administrador Sistema', 'admin@segurtrack.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'administrador'),
-  ('María Torres', 'mtorres@segurtrack.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'supervisor'),
-  ('Juan López', 'jlopez@segurtrack.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'operador'),
-  ('Carla Gómez', 'cgomez@segurtrack.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'supervisor'),
-  ('Miguel Sánchez', 'msanchez@segurtrack.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'supervisor'),
-  ('Laura Gómez', 'lgomez@segurtrack.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'supervisor');
+  ('Administrador Sistema', 'admin@segurtrack.com', '$2a$10$TmXHJ3VdkxKjfzmuOh1ID.L5zKNSJK24RoZgK7WxP45noeEAaiva2', 'administrador'),
+  ('María Torres', 'mtorres@segurtrack.com', '$2a$10$TmXHJ3VdkxKjfzmuOh1ID.L5zKNSJK24RoZgK7WxP45noeEAaiva2', 'supervisor'),
+  ('Juan López', 'jlopez@segurtrack.com', '$2a$10$TmXHJ3VdkxKjfzmuOh1ID.L5zKNSJK24RoZgK7WxP45noeEAaiva2', 'operador'),
+  ('Carla Gómez', 'cgomez@segurtrack.com', '$2a$10$TmXHJ3VdkxKjfzmuOh1ID.L5zKNSJK24RoZgK7WxP45noeEAaiva2', 'supervisor'),
+  ('Miguel Sánchez', 'msanchez@segurtrack.com', '$2a$10$TmXHJ3VdkxKjfzmuOh1ID.L5zKNSJK24RoZgK7WxP45noeEAaiva2', 'supervisor'),
+  ('Laura Gómez', 'lgomez@segurtrack.com', '$2a$10$TmXHJ3VdkxKjfzmuOh1ID.L5zKNSJK24RoZgK7WxP45noeEAaiva2', 'supervisor');
 
 INSERT INTO sedes (nombre, direccion) VALUES
   ('Centro Logístico Norte', 'Av. Industrial 1200, Zona Norte'),

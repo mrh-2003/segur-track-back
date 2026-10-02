@@ -9,9 +9,10 @@ const pool = new Pool({
   database: env.DB_NAME,
   user:     env.DB_USER,
   password: env.DB_PASSWORD,
+  ssl:      env.DB_HOST !== 'localhost' ? { rejectUnauthorized: false } : false,
   max:      10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000,
 });
 
 module.exports = pool;
