@@ -2,7 +2,7 @@
 
 const pool = require('../config/db');
 
-const listar = async ({ limite, offset, q, clienteId, estado }) => {
+const listar = async ({ limite, offset, q, clienteId, estado, supervisorId }) => {
   const condiciones = ['s.eliminado = FALSE'];
   const valores = [];
   let idx = 1;
@@ -20,6 +20,11 @@ const listar = async ({ limite, offset, q, clienteId, estado }) => {
   if (estado) {
     condiciones.push(`s.estado = $${idx}`);
     valores.push(estado);
+    idx++;
+  }
+  if (supervisorId) {
+    condiciones.push(`s.supervisor_id = $${idx}`);
+    valores.push(supervisorId);
     idx++;
   }
 
@@ -53,7 +58,15 @@ const listar = async ({ limite, offset, q, clienteId, estado }) => {
   return { filas: rows, total: parseInt(total, 10) };
 };
 
-const obtenerResumen = async () => {
+const obtenerResumen = async (supervisorId) => {
+  const condiciones = ['eliminado = FALSE'];
+  const params = [];
+  if (supervisorId) {
+    condiciones.push('supervisor_id = $1');
+    params.push(supervisorId);
+  }
+  const where = condiciones.join(' AND ');
+
   const { rows } = await pool.query(`
     SELECT
       COUNT(*) FILTER (WHERE estado IN ('programado','en_curso')) AS activos,
@@ -62,8 +75,8 @@ const obtenerResumen = async () => {
         COUNT(*) FILTER (WHERE estado = 'finalizado')::NUMERIC /
         NULLIF(COUNT(*), 0) * 100, 1
       )                                                            AS cumplimiento
-    FROM servicios WHERE eliminado = FALSE
-  `);
+    FROM servicios WHERE ${where}
+  `, params);
   return rows[0];
 };
 

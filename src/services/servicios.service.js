@@ -3,15 +3,18 @@
 const serviciosRepo = require('../repositories/servicios.repository');
 const actividadRepo = require('../repositories/actividad.repository');
 const personalRepo  = require('../repositories/personal.repository');
-const { ErrorNoEncontrado, ErrorConflicto } = require('../utils/errores');
+const { ErrorNoEncontrado, ErrorConflicto, ErrorAutorizacion } = require('../utils/errores');
 
 const listar = async (filtros) => serviciosRepo.listar(filtros);
 
-const obtenerResumen = async () => serviciosRepo.obtenerResumen();
+const obtenerResumen = async (supervisorId) => serviciosRepo.obtenerResumen(supervisorId);
 
-const obtenerPorId = async (id) => {
+const obtenerPorId = async (id, usuario) => {
   const s = await serviciosRepo.obtenerPorId(id);
   if (!s) throw new ErrorNoEncontrado('Servicio no encontrado');
+  if (usuario && usuario.rol === 'supervisor' && s.supervisor_id !== usuario.personalId) {
+    throw new ErrorNoEncontrado('Servicio no encontrado');
+  }
   return s;
 };
 
@@ -32,25 +35,33 @@ const crear = async (datos, usuarioSolicitante) => {
   return s;
 };
 
-const actualizar = async (id, datos, usuarioSolicitante) => {
+const actualizar = async (id, datos, usuario) => {
+  const actual = await serviciosRepo.obtenerPorId(id);
+  if (!actual) throw new ErrorNoEncontrado('Servicio no encontrado');
+  if (usuario && usuario.rol === 'supervisor' && actual.supervisor_id !== usuario.personalId) {
+    throw new ErrorAutorizacion('Solo puede gestionar servicios donde usted sea el supervisor');
+  }
   const s = await serviciosRepo.actualizar(id, datos);
-  if (!s) throw new ErrorNoEncontrado('Servicio no encontrado');
   await actividadRepo.registrar({
     tipo: 'servicio_actualizado',
     descripcion: `Servicio "${s.nombre}" actualizado`,
-    usuarioId: usuarioSolicitante,
+    usuarioId: usuario.id,
   });
   return s;
 };
 
-const cambiarEstado = async (id, estado, usuarioSolicitante) => {
+const cambiarEstado = async (id, estado, usuario) => {
+  const actual = await serviciosRepo.obtenerPorId(id);
+  if (!actual) throw new ErrorNoEncontrado('Servicio no encontrado');
+  if (usuario && usuario.rol === 'supervisor' && actual.supervisor_id !== usuario.personalId) {
+    throw new ErrorAutorizacion('Solo puede gestionar servicios donde usted sea el supervisor');
+  }
   const s = await serviciosRepo.cambiarEstado(id, estado);
-  if (!s) throw new ErrorNoEncontrado('Servicio no encontrado');
   if (estado === 'en_curso') {
     await actividadRepo.registrar({
       tipo: 'servicio_iniciado',
       descripcion: `Servicio "${s.nombre}" iniciado`,
-      usuarioId: usuarioSolicitante,
+      usuarioId: usuario.id,
     });
   }
   return s;

@@ -16,12 +16,18 @@ const listarPorSemana = async ({ desde, hasta, sedeId }) => {
   const { rows } = await pool.query(
     `SELECT t.id, TO_CHAR(t.fecha, 'YYYY-MM-DD') AS fecha,
             t.hora_inicio, t.hora_fin, t.estado, t.relevo_pendiente,
-            t.personal_id, t.servicio_id, t.sede_id,
+            t.personal_id, t.servicio_id, t.sede_id, t.creado_por, t.motivo_rechazo,
             CONCAT(p.nombres, ' ', p.apellidos) AS personal,
-            s.nombre AS servicio
+            p.cargo AS personal_cargo,
+            p.usuario_id AS personal_usuario_id,
+            s.nombre AS servicio,
+            se.nombre AS sede,
+            u.nombre AS creador_nombre
      FROM turnos t
      JOIN personal p ON t.personal_id = p.id AND p.eliminado = FALSE
      JOIN servicios s ON t.servicio_id = s.id AND s.eliminado = FALSE
+     JOIN sedes se ON t.sede_id = se.id AND se.eliminado = FALSE
+     LEFT JOIN usuarios u ON t.creado_por = u.id
      WHERE ${condiciones.join(' AND ')}
      ORDER BY p.apellidos, p.nombres, t.fecha`,
     valores
@@ -34,7 +40,7 @@ const obtenerResumen = async () => {
     SELECT
       COUNT(*) FILTER (WHERE estado = 'programado') AS programados,
       COUNT(*) FILTER (WHERE estado = 'cumplido')   AS cumplidos,
-      COUNT(*) FILTER (WHERE estado IN ('pendiente','sin_confirmar')) AS pendientes,
+      COUNT(*) FILTER (WHERE estado IN ('pendiente','sin_confirmar') OR relevo_pendiente = TRUE) AS pendientes,
       COUNT(*) AS total,
       ROUND(
         COUNT(*) FILTER (WHERE estado = 'cumplido')::NUMERIC /
@@ -49,7 +55,7 @@ const obtenerResumen = async () => {
 const obtenerAlertas = async () => {
   const { rows } = await pool.query(`
     SELECT
-      COUNT(*) FILTER (WHERE estado = 'sin_confirmar') AS sin_confirmar,
+      COUNT(*) FILTER (WHERE estado = 'sin_confirmar' AND relevo_pendiente = FALSE) AS sin_confirmar,
       COUNT(*) FILTER (WHERE relevo_pendiente = TRUE)  AS relevo_pendiente,
       COUNT(*) FILTER (WHERE estado = 'pendiente')     AS pendientes
     FROM turnos
@@ -58,11 +64,33 @@ const obtenerAlertas = async () => {
   return rows[0];
 };
 
-const crear = async ({ personalId, servicioId, sedeId, fecha, horaInicio, horaFin, estado }) => {
+const obtenerPorId = async (id) => {
   const { rows } = await pool.query(
-    `INSERT INTO turnos (personal_id, servicio_id, sede_id, fecha, hora_inicio, hora_fin, estado)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [personalId, servicioId, sedeId, fecha, horaInicio, horaFin, estado || 'programado']
+    `SELECT t.id, TO_CHAR(t.fecha, 'YYYY-MM-DD') AS fecha,
+            t.hora_inicio, t.hora_fin, t.estado, t.relevo_pendiente,
+            t.personal_id, t.servicio_id, t.sede_id, t.creado_por, t.motivo_rechazo,
+            CONCAT(p.nombres, ' ', p.apellidos) AS personal,
+            p.cargo AS personal_cargo,
+            p.usuario_id AS personal_usuario_id,
+            s.nombre AS servicio,
+            se.nombre AS sede,
+            u.nombre AS creador_nombre
+     FROM turnos t
+     JOIN personal p ON t.personal_id = p.id AND p.eliminado = FALSE
+     JOIN servicios s ON t.servicio_id = s.id AND s.eliminado = FALSE
+     JOIN sedes se ON t.sede_id = se.id AND se.eliminado = FALSE
+     LEFT JOIN usuarios u ON t.creado_por = u.id
+     WHERE t.id = $1 AND t.eliminado = FALSE`,
+    [id]
+  );
+  return rows[0] || null;
+};
+
+const crear = async ({ personalId, servicioId, sedeId, fecha, horaInicio, horaFin, estado, creadoPor }) => {
+  const { rows } = await pool.query(
+    `INSERT INTO turnos (personal_id, servicio_id, sede_id, fecha, hora_inicio, hora_fin, estado, relevo_pendiente, creado_por)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, $8) RETURNING *`,
+    [personalId, servicioId, sedeId, fecha, horaInicio, horaFin, estado || 'sin_confirmar', creadoPor]
   );
   return rows[0];
 };
@@ -91,9 +119,31 @@ const actualizar = async (id, { personalId, servicioId, sedeId, fecha, horaInici
 
 const confirmar = async (id) => {
   const { rows } = await pool.query(
-    `UPDATE turnos SET estado = 'confirmado', actualizado_en = NOW()
+    `UPDATE turnos
+     SET estado = 'pendiente', relevo_pendiente = FALSE, actualizado_en = NOW()
      WHERE id = $1 AND eliminado = FALSE RETURNING *`,
     [id]
+  );
+  return rows[0] || null;
+};
+
+const rechazar = async (id, motivo) => {
+  const { rows } = await pool.query(
+    `UPDATE turnos
+     SET relevo_pendiente = TRUE, estado = 'sin_confirmar', motivo_rechazo = $1, actualizado_en = NOW()
+     WHERE id = $2 AND eliminado = FALSE RETURNING *`,
+    [motivo || null, id]
+  );
+  return rows[0] || null;
+};
+
+const reasignar = async (id, { personalId, creadorId }) => {
+  const { rows } = await pool.query(
+    `UPDATE turnos
+     SET personal_id = $1, relevo_pendiente = FALSE, estado = 'sin_confirmar', motivo_rechazo = NULL,
+         creado_por = COALESCE($2, creado_por), actualizado_en = NOW()
+     WHERE id = $3 AND eliminado = FALSE RETURNING *`,
+    [personalId, creadorId || null, id]
   );
   return rows[0] || null;
 };
@@ -116,6 +166,16 @@ const listarSedes = async () => {
 };
 
 module.exports = {
-  listarPorSemana, obtenerResumen, obtenerAlertas,
-  crear, verificarSolapamiento, actualizar, confirmar, eliminar, listarSedes,
+  listarPorSemana,
+  obtenerResumen,
+  obtenerAlertas,
+  obtenerPorId,
+  crear,
+  verificarSolapamiento,
+  actualizar,
+  confirmar,
+  rechazar,
+  reasignar,
+  eliminar,
+  listarSedes,
 };

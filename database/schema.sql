@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS turnos (
   estado           VARCHAR(15)  NOT NULL DEFAULT 'programado'
                    CHECK (estado IN ('programado','confirmado','sin_confirmar','cumplido','pendiente')),
   relevo_pendiente BOOLEAN      NOT NULL DEFAULT FALSE,
+  creado_por       INT          REFERENCES usuarios(id),
+  motivo_rechazo   TEXT,
   eliminado        BOOLEAN      NOT NULL DEFAULT FALSE,
   eliminado_en     TIMESTAMPTZ,
   eliminado_por    INT          REFERENCES usuarios(id),

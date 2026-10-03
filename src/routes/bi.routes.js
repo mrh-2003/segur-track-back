@@ -2,8 +2,11 @@
 
 const { Router } = require('express');
 const ctrl = require('../controllers/bi.controller');
+const { autorizar } = require('../middlewares/auth');
 
 const router = Router();
+
+router.use(autorizar('administrador'));
 
 router.get('/indicadores',           ctrl.indicadores);
 router.get('/evolucion-cumplimiento', ctrl.evolucionCumplimiento);

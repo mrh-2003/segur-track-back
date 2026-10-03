@@ -26,19 +26,31 @@ const alertas = async (req, res, next) => {
 
 const crear = async (req, res, next) => {
   try {
-    respuestaCreado(res, await turnosService.crear(req.body, req.usuario.id));
+    respuestaCreado(res, await turnosService.crear(req.body, req.usuario));
   } catch (err) { next(err); }
 };
 
 const actualizar = async (req, res, next) => {
   try {
-    respuestaExito(res, await turnosService.actualizar(parseInt(req.params.id, 10), req.body, req.usuario.id));
+    respuestaExito(res, await turnosService.actualizar(parseInt(req.params.id, 10), req.body, req.usuario));
   } catch (err) { next(err); }
 };
 
 const confirmar = async (req, res, next) => {
   try {
-    respuestaExito(res, await turnosService.confirmar(parseInt(req.params.id, 10)));
+    respuestaExito(res, await turnosService.confirmar(parseInt(req.params.id, 10), req.usuario));
+  } catch (err) { next(err); }
+};
+
+const rechazar = async (req, res, next) => {
+  try {
+    respuestaExito(res, await turnosService.rechazar(parseInt(req.params.id, 10), req.body?.motivo, req.usuario));
+  } catch (err) { next(err); }
+};
+
+const reasignar = async (req, res, next) => {
+  try {
+    respuestaExito(res, await turnosService.reasignar(parseInt(req.params.id, 10), req.body, req.usuario));
   } catch (err) { next(err); }
 };
 
@@ -55,4 +67,15 @@ const listarSedes = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { listarSemana, resumen, alertas, crear, actualizar, confirmar, eliminar, listarSedes };
+module.exports = {
+  listarSemana,
+  resumen,
+  alertas,
+  crear,
+  actualizar,
+  confirmar,
+  rechazar,
+  reasignar,
+  eliminar,
+  listarSedes,
+};

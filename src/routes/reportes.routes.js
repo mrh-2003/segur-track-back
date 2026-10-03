@@ -3,13 +3,16 @@
 const { Router } = require('express');
 const ctrl = require('../controllers/reportes.controller');
 const { validar } = require('../middlewares/validar');
+const { autorizar } = require('../middlewares/auth');
 
 const router = Router();
 
-router.get('/',           ctrl.listar);
-router.get('/historial',  ctrl.historial);
-router.post('/generar', validar(ctrl.esquemaGenerar), ctrl.generar);
-router.get('/descargar-directo', ctrl.descargarDirecto);
-router.get('/:id/descargar', ctrl.descargar);
+router.use(autorizar('administrador'));
+
+router.get('/',                    ctrl.listar);
+router.get('/historial',           ctrl.historial);
+router.post('/generar',            validar(ctrl.esquemaGenerar), ctrl.generar);
+router.get('/descargar-directo',   ctrl.descargarDirecto);
+router.get('/:id/descargar',       ctrl.descargar);
 
 module.exports = router;

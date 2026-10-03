@@ -2,13 +2,13 @@
 
 const { Router } = require('express');
 const clientesController = require('../controllers/clientes.controller');
-const { autenticar, autorizar } = require('../middlewares/auth');
+const { autorizar } = require('../middlewares/auth');
 const { validar } = require('../middlewares/validar');
 const { esquemaCrear, esquemaActualizar } = require('../validators/clientes.validator');
 
 const router = Router();
 
-router.use(autenticar);
+router.use(autorizar('administrador', 'supervisor'));
 
 router.get('/', clientesController.listar);
 router.get('/resumen', clientesController.resumen);
