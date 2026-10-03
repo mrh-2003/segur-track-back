@@ -8,7 +8,6 @@ const { esquemaCrear, esquemaActualizar } = require('../validators/clientes.vali
 
 const router = Router();
 
-router.use(autorizar('administrador', 'supervisor'));
 
 router.get('/', clientesController.listar);
 router.get('/resumen', clientesController.resumen);

@@ -19,7 +19,7 @@ const autenticar = (req, res, next) => {
 };
 
 const autorizar = (...roles) => (req, res, next) => {
-  if (!roles.includes(req.usuario.rol)) {
+  if (!req.usuario || !roles.includes(req.usuario.rol)) {
     return next(new ErrorAutorizacion());
   }
   next();

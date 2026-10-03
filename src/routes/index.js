@@ -26,8 +26,8 @@ router.use('/incidencias', autenticar, incidenciasRutas);
 router.use('/bi', autenticar, biRutas);
 router.use('/multicriterio', autenticar, multicriterioRutas);
 router.use('/reportes', autenticar, reportesRutas);
-router.use('/sedes', sedesRutas);
-router.use('/clientes', clientesRutas);
+router.use('/sedes', autenticar, sedesRutas);
+router.use('/clientes', autenticar, clientesRutas);
 
 router.get('/tipos-incidencia', autenticar, (req, res, next) => {
   require('../controllers/incidencias.controller').listarTipos(req, res, next);
