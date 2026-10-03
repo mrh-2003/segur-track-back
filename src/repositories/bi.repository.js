@@ -106,7 +106,7 @@ const obtenerDesempenoPorServicio = async () => {
     LEFT JOIN incidencias i ON i.servicio_id = s.id
     WHERE s.eliminado = FALSE
     GROUP BY s.id, s.nombre
-    ORDER BY cumplimiento_pct DESC NULLS LAST
+    ORDER BY s.nombre ASC
     LIMIT 10
   `);
   return rows;

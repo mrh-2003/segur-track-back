@@ -14,6 +14,7 @@ router.get('/:id',       ctrl.obtener);
 router.post('/',         autorizar('administrador', 'supervisor'), validar(esquemaCrear),      ctrl.crear);
 router.put('/:id',       autorizar('administrador', 'supervisor'), validar(esquemaActualizar), ctrl.actualizar);
 router.patch('/:id/estado', autorizar('administrador', 'supervisor'), validar(esquemaCambiarEstado), ctrl.cambiarEstado);
+router.post('/:id/reiniciar-clave', autorizar('administrador'), ctrl.reiniciarClave);
 router.delete('/:id',    autorizar('administrador'),               ctrl.eliminar);
 
 module.exports = router;

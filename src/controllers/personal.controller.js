@@ -53,4 +53,20 @@ const eliminar = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { listar, resumen, obtener, crear, actualizar, cambiarEstado, eliminar };
+const reiniciarClave = async (req, res, next) => {
+  try {
+    const r = await personalService.reiniciarClave(parseInt(req.params.id, 10), req.usuario.id);
+    respuestaExito(res, r);
+  } catch (err) { next(err); }
+};
+
+module.exports = {
+  listar,
+  resumen,
+  obtener,
+  crear,
+  actualizar,
+  cambiarEstado,
+  eliminar,
+  reiniciarClave,
+};

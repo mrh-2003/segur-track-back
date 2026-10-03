@@ -181,34 +181,70 @@ function escaparPdfTexto(texto) {
     .replace(/\)/g, '\\)');
 }
 
+function calcularAnchosColumnas(columnas, filas, anchoTotal) {
+  const pesos = columnas.map((col, idx) => {
+    let max = col.length;
+    for (const f of filas.slice(0, 50)) {
+      const s = String(f[idx] ?? '');
+      if (s.length > max) max = Math.min(s.length, 35);
+    }
+    return Math.max(max, 5);
+  });
+  const suma = pesos.reduce((a, b) => a + b, 0);
+  const anchos = pesos.map((p) => Math.max(40, Math.floor((p / suma) * anchoTotal)));
+  const diff = anchoTotal - anchos.reduce((a, b) => a + b, 0);
+  anchos[anchos.length - 1] += diff;
+  return anchos;
+}
+
+function recortarTexto(txt, maxLen) {
+  const s = String(txt !== null && txt !== undefined ? txt : '—').trim();
+  if (s.length <= maxLen) return s;
+  if (maxLen <= 4) return s.slice(0, maxLen);
+  return s.slice(0, maxLen - 2) + '..';
+}
+
 function generarPdf(titulo, columnas, filas) {
   const lineas = [];
-  lineas.push(`BT /F2 16 Tf 40 760 Td (${escaparPdfTexto('SEGUR TRACK')}) Tj ET`);
-  lineas.push(`BT /F1 12 Tf 40 740 Td (${escaparPdfTexto(titulo)}) Tj ET`);
-  lineas.push(`BT /F1 9 Tf 40 725 Td (${escaparPdfTexto('Generado: ' + new Date().toLocaleString('es-PE'))}) Tj ET`);
+  const ahora = new Date();
+  const dia = String(ahora.getDate()).padStart(2, '0');
+  const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+  const anio = ahora.getFullYear();
+  const horas = String(ahora.getHours()).padStart(2, '0');
+  const mins = String(ahora.getMinutes()).padStart(2, '0');
+  const fechaGenerado = `${dia}/${mes}/${anio} ${horas}:${mins}`;
 
-  let y = 690;
-  const colAncho = Math.floor(520 / Math.max(columnas.length, 1));
+  lineas.push(`BT /F2 15 Tf 36 575 Td (${escaparPdfTexto('SEGUR TRACK — SISTEMA DE SEGURIDAD')}) Tj ET`);
+  lineas.push(`BT /F1 11 Tf 36 558 Td (${escaparPdfTexto(titulo)}) Tj ET`);
+  lineas.push(`BT /F1 8 Tf 36 544 Td (${escaparPdfTexto('Generado: ' + fechaGenerado)}) Tj ET`);
 
-  let x = 40;
+  const anchoTotal = 720;
+  const anchos = calcularAnchosColumnas(columnas, filas, anchoTotal);
+
+  let y = 515;
+  let x = 36;
+
   for (let i = 0; i < columnas.length; i++) {
-    lineas.push(`BT /F2 9 Tf ${x} ${y} Td (${escaparPdfTexto(columnas[i].slice(0, 18))}) Tj ET`);
-    x += colAncho;
+    const maxHeader = Math.max(3, Math.floor((anchos[i] - 6) / 5.2));
+    const headerTxt = recortarTexto(columnas[i], maxHeader);
+    lineas.push(`BT /F2 8.5 Tf ${x} ${y} Td (${escaparPdfTexto(headerTxt)}) Tj ET`);
+    x += anchos[i];
   }
 
   y -= 6;
-  lineas.push(`40 ${y} m 560 ${y} l S`);
+  lineas.push(`36 ${y} m 756 ${y} l S`);
   y -= 14;
 
   for (const fila of filas) {
-    if (y < 40) break;
-    let xFila = 40;
+    if (y < 35) break;
+    let xFila = 36;
     for (let i = 0; i < fila.length; i++) {
-      const valStr = String(fila[i] !== null && fila[i] !== undefined ? fila[i] : '—');
-      lineas.push(`BT /F1 8 Tf ${xFila} ${y} Td (${escaparPdfTexto(valStr.slice(0, 20))}) Tj ET`);
-      xFila += colAncho;
+      const maxCelda = Math.max(3, Math.floor((anchos[i] - 6) / 4.7));
+      const celdaTxt = recortarTexto(fila[i], maxCelda);
+      lineas.push(`BT /F1 7.5 Tf ${xFila} ${y} Td (${escaparPdfTexto(celdaTxt)}) Tj ET`);
+      xFila += anchos[i];
     }
-    y -= 14;
+    y -= 13;
   }
 
   const streamContent = lineas.join('\n');
@@ -217,7 +253,7 @@ function generarPdf(titulo, columnas, filas) {
   const objetos = [];
   objetos.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj');
   objetos.push('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj');
-  objetos.push('3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj');
+  objetos.push('3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj');
   objetos.push('4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj');
   objetos.push('5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj');
   objetos.push(`6 0 obj\n<< /Length ${streamBuf.length} >>\nstream\n${streamContent}\nendstream\nendobj`);
@@ -264,7 +300,7 @@ async function obtenerDatosReporte(tipo) {
       JOIN sedes se ON s.sede_id = se.id
       JOIN personal p ON s.supervisor_id = p.id
       WHERE s.eliminado = FALSE
-      ORDER BY s.id
+      ORDER BY s.nombre ASC
     `);
     const columnas = ['ID', 'Servicio', 'Cliente', 'Sede', 'Supervisor', 'Horario', 'Estado', 'Fecha Inicio', 'Fecha Fin'];
     const filas = rows.map((r) => [
@@ -293,7 +329,7 @@ async function obtenerDatosReporte(tipo) {
       JOIN servicios s ON t.servicio_id = s.id
       JOIN sedes se ON t.sede_id = se.id
       WHERE t.eliminado = FALSE
-      ORDER BY t.fecha DESC, p.apellidos
+      ORDER BY t.fecha ASC, p.apellidos ASC
     `);
     const columnas = ['ID', 'Fecha', 'Personal', 'Servicio', 'Sede', 'Horario', 'Estado'];
     const filas = rows.map((r) => [
@@ -321,7 +357,7 @@ async function obtenerDatosReporte(tipo) {
       LEFT JOIN personal p ON i.personal_id = p.id
       LEFT JOIN usuarios u ON i.registrado_por = u.id
       WHERE i.eliminado = FALSE
-      ORDER BY i.fecha_registro DESC
+      ORDER BY i.codigo ASC
     `);
     const columnas = ['Código', 'Tipo', 'Servicio', 'Registrado Por', 'Prioridad', 'Estado', 'Fecha Registro', 'Descripción'];
     const filas = rows.map((r) => [
@@ -344,7 +380,7 @@ async function obtenerDatosReporte(tipo) {
       FROM evaluaciones_multicriterio em
       JOIN servicios s ON em.servicio_id = s.id
       WHERE em.eliminado = FALSE
-      ORDER BY em.puntaje_global ASC
+      ORDER BY s.nombre ASC
     `);
     const columnas = ['Servicio', 'Puntaje Global', 'Nivel de Atención', 'Fecha Evaluación'];
     const filas = rows.map((r) => [
@@ -366,6 +402,7 @@ async function obtenerDatosReporte(tipo) {
     LEFT JOIN incidencias i ON i.servicio_id = s.id
     WHERE s.eliminado = FALSE
     GROUP BY s.id, s.nombre
+    ORDER BY s.nombre ASC
   `);
   const columnas = ['Servicio', 'Cumplimiento %', 'Incidencias Abiertas'];
   const filas = rows.map((r) => [

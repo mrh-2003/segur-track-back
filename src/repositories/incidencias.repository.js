@@ -42,7 +42,7 @@ const listar = async ({ limite, offset, q, tipoId, estado }) => {
      LEFT JOIN personal p ON i.personal_id = p.id
      LEFT JOIN usuarios u ON i.registrado_por = u.id
      WHERE ${where}
-     ORDER BY i.fecha_registro DESC
+     ORDER BY i.codigo ASC
      LIMIT $${idx} OFFSET $${idx + 1}`,
     [...valores, limite, offset]
   );

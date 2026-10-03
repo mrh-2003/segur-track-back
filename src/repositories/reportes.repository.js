@@ -5,7 +5,7 @@ const pool = require('../config/db');
 const listar = async () => {
   const { rows } = await pool.query(
     `SELECT id, tipo, categoria, formato, estado, creado_en AS ultima_actualizacion
-     FROM reportes_generados WHERE eliminado = FALSE ORDER BY creado_en DESC`
+     FROM reportes_generados WHERE eliminado = FALSE ORDER BY id ASC`
   );
   return rows;
 };
@@ -17,7 +17,7 @@ const historial = async (limite = 10) => {
      FROM reportes_generados r
      JOIN usuarios u ON r.generado_por = u.id
      WHERE r.eliminado = FALSE
-     ORDER BY r.creado_en DESC LIMIT $1`,
+     ORDER BY r.id ASC LIMIT $1`,
     [limite]
   );
   return rows;

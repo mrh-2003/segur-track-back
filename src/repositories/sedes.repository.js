@@ -37,7 +37,7 @@ const listar = async ({ limite = 50, offset = 0, q } = {}) => {
 const obtenerResumen = async () => {
   const { rows } = await pool.query(`
     SELECT
-      COUNT(*) AS total,
+      COUNT(DISTINCT s.id) AS total,
       COUNT(DISTINCT p.id) FILTER (WHERE p.eliminado = FALSE) AS total_personal,
       COUNT(DISTINCT srv.id) FILTER (WHERE srv.eliminado = FALSE AND srv.estado = 'en_curso') AS servicios_activos
     FROM sedes s

@@ -220,4 +220,54 @@ const eliminar = async (id, eliminadoPor) => {
   }
 };
 
-module.exports = { listar, obtenerResumen, obtenerPorId, crear, actualizar, cambiarEstado, eliminar };
+const reiniciarClave = async (id) => {
+  const { rows: [p] } = await pool.query(
+    `SELECT p.id, p.nombres, p.apellidos, p.correo, p.cargo, p.usuario_id
+     FROM personal p
+     WHERE p.id = $1 AND p.eliminado = FALSE`,
+    [id]
+  );
+  if (!p) return null;
+
+  if (!p.correo) {
+    throw new Error('El personal no tiene un correo electrónico configurado');
+  }
+
+  const hash = await bcrypt.hash(p.correo.trim().toLowerCase(), 10);
+
+  if (p.usuario_id) {
+    await pool.query(
+      `UPDATE usuarios
+       SET clave_hash = $1, debe_cambiar_clave = TRUE, actualizado_en = NOW()
+       WHERE id = $2 AND eliminado = FALSE`,
+      [hash, p.usuario_id]
+    );
+  } else {
+    const rol = p.cargo === 'supervisor' ? 'supervisor' : 'operador';
+    const { rows: [u] } = await pool.query(
+      `INSERT INTO usuarios (nombre, correo, clave_hash, rol, activo, debe_cambiar_clave)
+       VALUES ($1, $2, $3, $4, TRUE, TRUE)
+       ON CONFLICT (correo) DO UPDATE
+       SET clave_hash = EXCLUDED.clave_hash, debe_cambiar_clave = TRUE, actualizado_en = NOW()
+       RETURNING id`,
+      [`${p.nombres} ${p.apellidos}`, p.correo.trim().toLowerCase(), hash, rol]
+    );
+    await pool.query(
+      `UPDATE personal SET usuario_id = $1 WHERE id = $2`,
+      [u.id, p.id]
+    );
+  }
+
+  return p;
+};
+
+module.exports = {
+  listar,
+  obtenerResumen,
+  obtenerPorId,
+  crear,
+  actualizar,
+  cambiarEstado,
+  eliminar,
+  reiniciarClave,
+};

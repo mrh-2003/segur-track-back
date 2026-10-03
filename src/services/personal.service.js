@@ -52,4 +52,24 @@ const eliminar = async (id, usuarioSolicitante) => {
   return p;
 };
 
-module.exports = { listar, obtenerResumen, obtenerPorId, crear, actualizar, cambiarEstado, eliminar };
+const reiniciarClave = async (id, usuarioSolicitante) => {
+  const p = await personalRepo.reiniciarClave(id);
+  if (!p) throw new ErrorNoEncontrado('Personal no encontrado');
+  await actividadRepo.registrar({
+    tipo: 'personal_clave_reiniciada',
+    descripcion: `Contraseña de ${p.nombres} ${p.apellidos} reiniciada por el administrador`,
+    usuarioId: usuarioSolicitante,
+  });
+  return { mensaje: `Contraseña de ${p.nombres} ${p.apellidos} reiniciada a: ${p.correo}` };
+};
+
+module.exports = {
+  listar,
+  obtenerResumen,
+  obtenerPorId,
+  crear,
+  actualizar,
+  cambiarEstado,
+  eliminar,
+  reiniciarClave,
+};

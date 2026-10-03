@@ -45,7 +45,7 @@ const listar = async ({ limite, offset, q, clienteId, estado }) => {
      JOIN sedes se   ON s.sede_id    = se.id
      JOIN personal p ON s.supervisor_id = p.id
      WHERE ${where}
-     ORDER BY s.creado_en DESC
+     ORDER BY s.nombre ASC
      LIMIT $${idx} OFFSET $${idx + 1}`,
     [...valores, limite, offset]
   );
