@@ -8,11 +8,9 @@ const { esquemaCrear, esquemaActualizar } = require('../validators/clientes.vali
 
 const router = Router();
 
-router.use(autorizar('administrador', 'supervisor'));
-
 router.get('/', clientesController.listar);
-router.get('/resumen', clientesController.resumen);
-router.get('/:id', clientesController.obtenerPorId);
+router.get('/resumen', autorizar('administrador', 'supervisor'), clientesController.resumen);
+router.get('/:id', autorizar('administrador', 'supervisor'), clientesController.obtenerPorId);
 router.post('/', autorizar('administrador', 'supervisor'), validar(esquemaCrear), clientesController.crear);
 router.put('/:id', autorizar('administrador', 'supervisor'), validar(esquemaActualizar), clientesController.actualizar);
 router.delete('/:id', autorizar('administrador'), clientesController.eliminar);

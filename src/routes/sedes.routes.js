@@ -8,11 +8,9 @@ const { esquemaCrear, esquemaActualizar } = require('../validators/sedes.validat
 
 const router = Router();
 
-router.use(autorizar('administrador', 'supervisor'));
-
 router.get('/', sedesController.listar);
-router.get('/resumen', sedesController.resumen);
-router.get('/:id', sedesController.obtenerPorId);
+router.get('/resumen', autorizar('administrador', 'supervisor'), sedesController.resumen);
+router.get('/:id', autorizar('administrador', 'supervisor'), sedesController.obtenerPorId);
 router.post('/', autorizar('administrador', 'supervisor'), validar(esquemaCrear), sedesController.crear);
 router.put('/:id', autorizar('administrador', 'supervisor'), validar(esquemaActualizar), sedesController.actualizar);
 router.delete('/:id', autorizar('administrador'), sedesController.eliminar);
