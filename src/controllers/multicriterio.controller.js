@@ -3,12 +3,10 @@
 const multicriterioService = require('../services/multicriterio.service');
 const { respuestaExito } = require('../utils/respuesta');
 const { z } = require('zod');
-const { validar } = require('../middlewares/validar');
-const { autorizar } = require('../middlewares/auth');
 
 const esquemaPesos = z.object({
   criterios: z.array(z.object({
-    id:   z.number().int().positive(),
+    id: z.number().int().positive(),
     peso: z.number().min(0).max(1),
   })).refine(
     (arr) => Math.abs(arr.reduce((s, c) => s + c.peso, 0) - 1) < 0.001,
@@ -45,6 +43,12 @@ const resultado = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const indicadores = async (req, res, next) => {
+  try {
+    respuestaExito(res, await multicriterioService.obtenerIndicadores());
+  } catch (err) { next(err); }
+};
+
 const detallePorServicio = async (req, res, next) => {
   try {
     respuestaExito(res, await multicriterioService.obtenerDetallePorServicio(parseInt(req.params.id, 10)));
@@ -52,6 +56,6 @@ const detallePorServicio = async (req, res, next) => {
 };
 
 module.exports = {
-  criterios, actualizarPesos, evaluar, resultado, detallePorServicio,
+  criterios, actualizarPesos, evaluar, resultado, indicadores, detallePorServicio,
   esquemaPesos, esquemaEvaluar,
 };

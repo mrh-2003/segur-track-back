@@ -82,7 +82,11 @@ const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'a
     let uId = usuarioId;
     const correoNormalizado = correo.trim().toLowerCase();
     const activoBool = estado === 'activo';
-    const rolUsuario = cargo === 'supervisor' ? 'supervisor' : 'operador';
+    const rolUsuario = cargo === 'jefe_operaciones'
+      ? 'jefe_operaciones'
+      : cargo === 'supervisor'
+      ? 'supervisor'
+      : 'operador';
 
     if (!uId) {
       const { rows: uExistente } = await client.query(
@@ -143,7 +147,11 @@ const actualizar = async (id, { nombres, apellidos, documento, correo, cargo, es
 
     if (p && p.usuario_id) {
       const activoBool = estado === 'activo';
-      const rolUsuario = cargo === 'supervisor' ? 'supervisor' : 'operador';
+      const rolUsuario = cargo === 'jefe_operaciones'
+        ? 'jefe_operaciones'
+        : cargo === 'supervisor'
+        ? 'supervisor'
+        : 'operador';
       await client.query(
         `UPDATE usuarios
          SET nombre = $1, correo = COALESCE($2, correo), rol = $3, activo = $4, actualizado_en = NOW()
@@ -243,7 +251,11 @@ const reiniciarClave = async (id) => {
       [hash, p.usuario_id]
     );
   } else {
-    const rol = p.cargo === 'supervisor' ? 'supervisor' : 'operador';
+    const rol = p.cargo === 'jefe_operaciones'
+      ? 'jefe_operaciones'
+      : p.cargo === 'supervisor'
+      ? 'supervisor'
+      : 'operador';
     const { rows: [u] } = await pool.query(
       `INSERT INTO usuarios (nombre, correo, clave_hash, rol, activo, debe_cambiar_clave)
        VALUES ($1, $2, $3, $4, TRUE, TRUE)

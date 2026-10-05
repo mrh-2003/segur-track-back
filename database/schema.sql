@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   nombre              VARCHAR(120) NOT NULL,
   correo              VARCHAR(120) NOT NULL UNIQUE,
   clave_hash          TEXT         NOT NULL,
-  rol                 VARCHAR(20)  NOT NULL CHECK (rol IN ('administrador','supervisor','operador')),
+  rol                 VARCHAR(20)  NOT NULL CHECK (rol IN ('administrador','jefe_operaciones','supervisor','operador')),
   activo              BOOLEAN      NOT NULL DEFAULT TRUE,
   debe_cambiar_clave  BOOLEAN      NOT NULL DEFAULT FALSE,
   codigo_recuperacion VARCHAR(30),
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS personal (
   nombres        VARCHAR(80)  NOT NULL,
   apellidos      VARCHAR(80)  NOT NULL,
   documento      VARCHAR(20)  NOT NULL,
-  cargo          VARCHAR(20)  NOT NULL CHECK (cargo IN ('supervisor','agente','administrativo')),
+  cargo          VARCHAR(20)  NOT NULL CHECK (cargo IN ('jefe_operaciones','supervisor','agente','administrativo')),
   estado         VARCHAR(10)  NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','inactivo')),
   correo         VARCHAR(120),
   sede_id        INT          NOT NULL REFERENCES sedes(id),
@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS incidencias (
   fecha_registro      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   fecha_atencion      TIMESTAMPTZ,
   fecha_cierre        TIMESTAMPTZ,
+  observacion         TEXT,
   registrado_por      INT          NOT NULL REFERENCES usuarios(id),
   eliminado           BOOLEAN      NOT NULL DEFAULT FALSE,
   eliminado_en        TIMESTAMPTZ,
@@ -221,3 +222,73 @@ CREATE TABLE IF NOT EXISTS actividad_reciente (
 );
 
 CREATE INDEX IF NOT EXISTS idx_actividad_creado_en ON actividad_reciente(creado_en DESC);
+
+CREATE TABLE IF NOT EXISTS protocolos (
+  id             SERIAL PRIMARY KEY,
+  codigo         VARCHAR(20)  NOT NULL,
+  nombre         VARCHAR(120) NOT NULL,
+  descripcion    TEXT,
+  actividades    TEXT,
+  activo         BOOLEAN      NOT NULL DEFAULT TRUE,
+  eliminado      BOOLEAN      NOT NULL DEFAULT FALSE,
+  eliminado_en   TIMESTAMPTZ,
+  eliminado_por  INT          REFERENCES usuarios(id),
+  creado_en      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  actualizado_en TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_protocolos_codigo
+  ON protocolos(codigo) WHERE eliminado = FALSE;
+
+CREATE TABLE IF NOT EXISTS servicio_protocolos (
+  id             SERIAL PRIMARY KEY,
+  servicio_id    INT          NOT NULL REFERENCES servicios(id),
+  protocolo_id   INT          NOT NULL REFERENCES protocolos(id),
+  eliminado      BOOLEAN      NOT NULL DEFAULT FALSE,
+  eliminado_en   TIMESTAMPTZ,
+  eliminado_por  INT          REFERENCES usuarios(id),
+  creado_en      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  actualizado_en TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_servicio_protocolos
+  ON servicio_protocolos(servicio_id, protocolo_id) WHERE eliminado = FALSE;
+
+CREATE TABLE IF NOT EXISTS servicio_requerimientos (
+  id             SERIAL PRIMARY KEY,
+  servicio_id    INT          NOT NULL REFERENCES servicios(id),
+  titulo         VARCHAR(150) NOT NULL,
+  descripcion    TEXT,
+  prioridad      VARCHAR(10)  NOT NULL DEFAULT 'media',
+  eliminado      BOOLEAN      NOT NULL DEFAULT FALSE,
+  eliminado_en   TIMESTAMPTZ,
+  eliminado_por  INT          REFERENCES usuarios(id),
+  creado_en      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  actualizado_en TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS evidencias_servicio (
+  id              SERIAL PRIMARY KEY,
+  servicio_id     INT          NOT NULL REFERENCES servicios(id),
+  protocolo_id    INT          REFERENCES protocolos(id),
+  personal_id     INT          NOT NULL REFERENCES personal(id),
+  titulo          VARCHAR(150) NOT NULL,
+  descripcion     TEXT,
+  archivo_url     TEXT,
+  estado_revision VARCHAR(20)  NOT NULL DEFAULT 'pendiente'
+                  CHECK (estado_revision IN ('pendiente','aprobada','observada')),
+  observacion     TEXT,
+  revisado_por    INT          REFERENCES usuarios(id),
+  fecha_revision  TIMESTAMPTZ,
+  eliminado       BOOLEAN      NOT NULL DEFAULT FALSE,
+  eliminado_en    TIMESTAMPTZ,
+  eliminado_por   INT          REFERENCES usuarios(id),
+  creado_en       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  actualizado_en  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_evidencias_servicio
+  ON evidencias_servicio(servicio_id) WHERE eliminado = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_evidencias_personal
+  ON evidencias_servicio(personal_id) WHERE eliminado = FALSE;

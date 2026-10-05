@@ -6,7 +6,7 @@ const { autorizar } = require('../middlewares/auth');
 
 const router = Router();
 
-router.use(autorizar('administrador'));
+router.use(autorizar('administrador', 'jefe_operaciones', 'supervisor'));
 
 router.get('/indicadores',           ctrl.indicadores);
 router.get('/evolucion-cumplimiento', ctrl.evolucionCumplimiento);

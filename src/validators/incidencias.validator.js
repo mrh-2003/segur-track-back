@@ -17,10 +17,21 @@ const esquemaActualizar = z.object({
   descripcion:      z.string().min(10, 'Descripción mínima 10 caracteres'),
   prioridad:        z.enum(['alta', 'media', 'baja'], { message: 'Prioridad inválida' }),
   estado:           z.enum(['abierta', 'en_atencion', 'cerrada']),
+  observacion:      z.string().trim().optional().nullable(),
 });
 
 const esquemaCambiarEstado = z.object({
-  estado: z.enum(['abierta', 'en_atencion', 'cerrada']),
+  estado:      z.enum(['abierta', 'en_atencion', 'cerrada']),
+  observacion: z.string().trim().optional().nullable(),
 });
 
-module.exports = { esquemaCrear, esquemaActualizar, esquemaCambiarEstado };
+const esquemaObservacion = z.object({
+  observacion: z.string().trim().min(3, 'La observación debe tener al menos 3 caracteres'),
+});
+
+module.exports = {
+  esquemaCrear,
+  esquemaActualizar,
+  esquemaCambiarEstado,
+  esquemaObservacion,
+};

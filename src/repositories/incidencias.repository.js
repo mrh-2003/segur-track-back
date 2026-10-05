@@ -2,7 +2,7 @@
 
 const pool = require('../config/db');
 
-const listar = async ({ limite, offset, q, tipoId, estado }) => {
+const listar = async ({ limite, offset, q, tipoId, estado, servicioId }) => {
   const condiciones = ['i.eliminado = FALSE'];
   const valores = [];
   let idx = 1;
@@ -22,6 +22,11 @@ const listar = async ({ limite, offset, q, tipoId, estado }) => {
     valores.push(estado);
     idx++;
   }
+  if (servicioId) {
+    condiciones.push(`i.servicio_id = $${idx}`);
+    valores.push(servicioId);
+    idx++;
+  }
 
   const where = condiciones.join(' AND ');
 
@@ -31,7 +36,7 @@ const listar = async ({ limite, offset, q, tipoId, estado }) => {
   );
 
   const { rows } = await pool.query(
-    `SELECT i.id, i.codigo, i.prioridad, i.estado, i.fecha_registro, i.fecha_atencion, i.fecha_cierre, i.descripcion,
+    `SELECT i.id, i.codigo, i.prioridad, i.estado, i.fecha_registro, i.fecha_atencion, i.fecha_cierre, i.descripcion, i.observacion,
             i.tipo_incidencia_id, i.servicio_id, i.personal_id, i.registrado_por,
             ti.nombre AS tipo,
             s.nombre  AS servicio,
@@ -120,7 +125,7 @@ const actualizar = async (id, { tipoIncidenciaId, servicioId, personalId, descri
   return rows[0] || null;
 };
 
-const cambiarEstado = async (id, estado) => {
+const cambiarEstado = async (id, estado, observacion) => {
   const ahora = new Date();
   const fechaAtencion = estado === 'en_atencion' ? ahora : undefined;
   const fechaCierre   = estado === 'cerrada'     ? ahora : undefined;
@@ -131,11 +136,21 @@ const cambiarEstado = async (id, estado) => {
 
   if (fechaAtencion) { sql += `, fecha_atencion = $${idx}`; valores.push(ahora); idx++; }
   if (fechaCierre)   { sql += `, fecha_cierre = $${idx}`;   valores.push(ahora); idx++; }
+  if (observacion !== undefined && observacion !== null) { sql += `, observacion = $${idx}`; valores.push(observacion.trim()); idx++; }
 
   sql += ` WHERE id = $${idx} AND eliminado = FALSE RETURNING *`;
   valores.push(id);
 
   const { rows } = await pool.query(sql, valores);
+  return rows[0] || null;
+};
+
+const registrarObservacion = async (id, observacion) => {
+  const { rows } = await pool.query(
+    `UPDATE incidencias SET observacion = $1, actualizado_en = NOW()
+     WHERE id = $2 AND eliminado = FALSE RETURNING *`,
+    [observacion ? observacion.trim() : null, id]
+  );
   return rows[0] || null;
 };
 
@@ -165,6 +180,7 @@ module.exports = {
   crear,
   actualizar,
   cambiarEstado,
+  registrarObservacion,
   eliminar,
   listarTipos,
 };

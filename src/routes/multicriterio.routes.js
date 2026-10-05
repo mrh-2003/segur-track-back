@@ -7,12 +7,12 @@ const { autorizar } = require('../middlewares/auth');
 
 const router = Router();
 
-router.use(autorizar('administrador'));
+router.get('/criterios',     autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.criterios);
+router.get('/resultado',     autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.resultado);
+router.get('/indicadores',   autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.indicadores);
+router.get('/servicios/:id', autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.detallePorServicio);
 
-router.get('/criterios',         ctrl.criterios);
-router.put('/criterios',         validar(ctrl.esquemaPesos), ctrl.actualizarPesos);
-router.post('/evaluar',          validar(ctrl.esquemaEvaluar), ctrl.evaluar);
-router.get('/resultado',         ctrl.resultado);
-router.get('/servicios/:id',     ctrl.detallePorServicio);
+router.post('/evaluar',      autorizar('administrador', 'jefe_operaciones', 'supervisor'), validar(ctrl.esquemaEvaluar), ctrl.evaluar);
+router.put('/criterios',     autorizar('administrador', 'jefe_operaciones'), validar(ctrl.esquemaPesos), ctrl.actualizarPesos);
 
 module.exports = router;

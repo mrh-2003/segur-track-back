@@ -74,7 +74,7 @@ const confirmar = async (id, usuario) => {
 
   const esAsignado = (t.personal_usuario_id && t.personal_usuario_id === usuario.id) ||
                      (usuario.personalId && t.personal_id === usuario.personalId);
-  const esAdmin = usuario.rol === 'administrador';
+  const esAdmin = usuario.rol === 'administrador' || usuario.rol === 'jefe_operaciones';
   const esSupervisor = usuario.rol === 'supervisor';
 
   if (!esAsignado && !esAdmin && !esSupervisor) {
@@ -98,7 +98,7 @@ const cumplir = async (id, evidencias, usuario) => {
 
   const esAsignado = (t.personal_usuario_id && t.personal_usuario_id === usuario.id) ||
                      (usuario.personalId && t.personal_id === usuario.personalId);
-  const esAdmin = usuario.rol === 'administrador';
+  const esAdmin = usuario.rol === 'administrador' || usuario.rol === 'jefe_operaciones';
   const esSupervisor = usuario.rol === 'supervisor';
 
   if (!esAsignado && !esAdmin && !esSupervisor) {
@@ -143,7 +143,7 @@ const rechazar = async (id, motivo, usuario) => {
 
   const esAsignado = (t.personal_usuario_id && t.personal_usuario_id === usuario.id) ||
                      (usuario.personalId && t.personal_id === usuario.personalId);
-  const esAdmin = usuario.rol === 'administrador';
+  const esAdmin = usuario.rol === 'administrador' || usuario.rol === 'jefe_operaciones';
   const esSupervisor = usuario.rol === 'supervisor';
 
   if (!esAsignado && !esAdmin && !esSupervisor) {

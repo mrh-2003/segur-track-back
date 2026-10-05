@@ -2,7 +2,7 @@
 
 const pool = require('../config/db');
 
-const listar = async ({ limite, offset, q, clienteId, estado, supervisorId }) => {
+const listar = async ({ limite, offset, q, clienteId, estado, supervisorId, personalId }) => {
   const condiciones = ['s.eliminado = FALSE'];
   const valores = [];
   let idx = 1;
@@ -25,6 +25,11 @@ const listar = async ({ limite, offset, q, clienteId, estado, supervisorId }) =>
   if (supervisorId) {
     condiciones.push(`s.supervisor_id = $${idx}`);
     valores.push(supervisorId);
+    idx++;
+  }
+  if (personalId) {
+    condiciones.push(`EXISTS (SELECT 1 FROM servicio_personal sp WHERE sp.servicio_id = s.id AND sp.personal_id = $${idx} AND sp.eliminado = FALSE)`);
+    valores.push(personalId);
     idx++;
   }
 
@@ -147,4 +152,107 @@ const listarClientes = async () => {
   return rows;
 };
 
-module.exports = { listar, obtenerResumen, obtenerPorId, crear, actualizar, cambiarEstado, eliminar, listarClientes };
+const listarProtocolos = async (servicioId) => {
+  const { rows } = await pool.query(
+    `SELECT p.id, p.codigo, p.nombre, p.descripcion, p.actividades, p.activo
+     FROM protocolos p
+     JOIN servicio_protocolos sp ON p.id = sp.protocolo_id
+     WHERE sp.servicio_id = $1 AND sp.eliminado = FALSE AND p.eliminado = FALSE
+     ORDER BY p.codigo ASC`,
+    [servicioId]
+  );
+  return rows;
+};
+
+const asociarProtocolo = async (servicioId, protocoloId) => {
+  const { rows } = await pool.query(
+    `INSERT INTO servicio_protocolos (servicio_id, protocolo_id, eliminado)
+     VALUES ($1, $2, FALSE)
+     ON CONFLICT (servicio_id, protocolo_id) WHERE eliminado = FALSE
+     DO NOTHING
+     RETURNING *`,
+    [servicioId, protocoloId]
+  );
+  if (!rows[0]) {
+    await pool.query(
+      `UPDATE servicio_protocolos
+       SET eliminado = FALSE, actualizado_en = NOW()
+       WHERE servicio_id = $1 AND protocolo_id = $2`,
+      [servicioId, protocoloId]
+    );
+  }
+  return true;
+};
+
+const desasociarProtocolo = async (servicioId, protocoloId, usuarioId) => {
+  const { rows } = await pool.query(
+    `UPDATE servicio_protocolos
+     SET eliminado = TRUE, eliminado_en = NOW(), eliminado_por = $3, actualizado_en = NOW()
+     WHERE servicio_id = $1 AND protocolo_id = $2 AND eliminado = FALSE
+     RETURNING id`,
+    [servicioId, protocoloId, usuarioId]
+  );
+  return rows[0] || null;
+};
+
+const listarRequerimientos = async (servicioId) => {
+  const { rows } = await pool.query(
+    `SELECT id, servicio_id, titulo, descripcion, prioridad, creado_en
+     FROM servicio_requerimientos
+     WHERE servicio_id = $1 AND eliminado = FALSE
+     ORDER BY id ASC`,
+    [servicioId]
+  );
+  return rows;
+};
+
+const crearRequerimiento = async (servicioId, { titulo, descripcion, prioridad = 'media' }) => {
+  const { rows } = await pool.query(
+    `INSERT INTO servicio_requerimientos (servicio_id, titulo, descripcion, prioridad)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [servicioId, titulo.trim(), descripcion ? descripcion.trim() : null, prioridad]
+  );
+  return rows[0];
+};
+
+const eliminarRequerimiento = async (id, usuarioId) => {
+  const { rows } = await pool.query(
+    `UPDATE servicio_requerimientos
+     SET eliminado = TRUE, eliminado_en = NOW(), eliminado_por = $2, actualizado_en = NOW()
+     WHERE id = $1 AND eliminado = FALSE
+     RETURNING id`,
+    [id, usuarioId]
+  );
+  return rows[0] || null;
+};
+
+const listarPersonalAsignado = async (servicioId) => {
+  const { rows } = await pool.query(
+    `SELECT p.id, p.nombres, p.apellidos, p.documento, p.cargo, p.estado, p.correo
+     FROM personal p
+     JOIN servicio_personal sp ON p.id = sp.personal_id
+     WHERE sp.servicio_id = $1 AND sp.eliminado = FALSE AND p.eliminado = FALSE
+     ORDER BY p.nombres ASC`,
+    [servicioId]
+  );
+  return rows;
+};
+
+module.exports = {
+  listar,
+  obtenerResumen,
+  obtenerPorId,
+  crear,
+  actualizar,
+  cambiarEstado,
+  eliminar,
+  listarClientes,
+  listarProtocolos,
+  asociarProtocolo,
+  desasociarProtocolo,
+  listarRequerimientos,
+  crearRequerimiento,
+  eliminarRequerimiento,
+  listarPersonalAsignado,
+};

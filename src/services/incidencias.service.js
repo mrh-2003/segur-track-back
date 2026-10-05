@@ -62,16 +62,28 @@ const actualizar = async (id, datos, usuarioSolicitante) => {
   return i;
 };
 
-const cambiarEstado = async (id, estado, usuarioSolicitante) => {
+const cambiarEstado = async (id, estado, observacion, usuarioSolicitante) => {
   const actual = await incidenciasRepo.obtenerPorId(id);
   if (!actual) throw new ErrorNoEncontrado('Incidencia no encontrada');
   if (estado === 'cerrada' && !actual.fecha_atencion) {
     throw new ErrorConflicto('No se puede cerrar una incidencia sin haber sido atendida previamente');
   }
-  const i = await incidenciasRepo.cambiarEstado(id, estado);
+  const i = await incidenciasRepo.cambiarEstado(id, estado, observacion);
   await actividadRepo.registrar({
     tipo: 'incidencia_atendida',
     descripcion: `Incidencia ${actual.codigo} cambiada a estado: ${estado}`,
+    usuarioId: usuarioSolicitante,
+  });
+  return i;
+};
+
+const registrarObservacion = async (id, observacion, usuarioSolicitante) => {
+  const actual = await incidenciasRepo.obtenerPorId(id);
+  if (!actual) throw new ErrorNoEncontrado('Incidencia no encontrada');
+  const i = await incidenciasRepo.registrarObservacion(id, observacion);
+  await actividadRepo.registrar({
+    tipo: 'incidencia_observacion',
+    descripcion: `Observación registrada en incidencia ${actual.codigo}`,
     usuarioId: usuarioSolicitante,
   });
   return i;
@@ -93,6 +105,7 @@ module.exports = {
   crear,
   actualizar,
   cambiarEstado,
+  registrarObservacion,
   eliminar,
   listarTipos,
 };

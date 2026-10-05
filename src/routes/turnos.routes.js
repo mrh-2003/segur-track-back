@@ -13,12 +13,12 @@ router.get('/semana',          ctrl.listarSemana);
 router.get('/resumen',         ctrl.resumen);
 router.get('/alertas',         ctrl.alertas);
 router.get('/sedes',           ctrl.listarSedes);
-router.post('/',               autorizar('administrador', 'supervisor'), validar(esquemaCrear), ctrl.crear);
-router.put('/:id',             autorizar('administrador', 'supervisor'), validar(esquemaActualizar), ctrl.actualizar);
+router.post('/',               autorizar('administrador', 'jefe_operaciones', 'supervisor'), validar(esquemaCrear), ctrl.crear);
+router.put('/:id',             autorizar('administrador', 'jefe_operaciones', 'supervisor'), validar(esquemaActualizar), ctrl.actualizar);
 router.patch('/:id/confirmar', ctrl.confirmar);
 router.patch('/:id/cumplir',   validar(esquemaCumplir), ctrl.cumplir);
 router.patch('/:id/rechazar',  ctrl.rechazar);
-router.patch('/:id/reasignar', autorizar('administrador', 'supervisor'), validar(esquemaReasignar), ctrl.reasignar);
-router.delete('/:id',          autorizar('administrador', 'supervisor'), ctrl.eliminar);
+router.patch('/:id/reasignar', autorizar('administrador', 'jefe_operaciones', 'supervisor'), validar(esquemaReasignar), ctrl.reasignar);
+router.delete('/:id',          autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.eliminar);
 
 module.exports = router;

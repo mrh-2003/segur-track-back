@@ -14,6 +14,8 @@ const multicriterioRutas = require('./multicriterio.routes');
 const reportesRutas = require('./reportes.routes');
 const sedesRutas = require('./sedes.routes');
 const clientesRutas = require('./clientes.routes');
+const protocolosRutas = require('./protocolos.routes');
+const evidenciasRutas = require('./evidencias.routes');
 
 const router = Router();
 
@@ -28,6 +30,8 @@ router.use('/multicriterio', autenticar, multicriterioRutas);
 router.use('/reportes', autenticar, reportesRutas);
 router.use('/sedes', autenticar, sedesRutas);
 router.use('/clientes', autenticar, clientesRutas);
+router.use('/protocolos', autenticar, protocolosRutas);
+router.use('/evidencias', autenticar, evidenciasRutas);
 
 router.get('/tipos-incidencia', autenticar, (req, res, next) => {
   require('../controllers/incidencias.controller').listarTipos(req, res, next);
