@@ -17,6 +17,7 @@ const listarPorSemana = async ({ desde, hasta, sedeId }) => {
     `SELECT t.id, TO_CHAR(t.fecha, 'YYYY-MM-DD') AS fecha,
             t.hora_inicio, t.hora_fin, t.estado, t.relevo_pendiente,
             t.personal_id, t.servicio_id, t.sede_id, t.creado_por, t.motivo_rechazo,
+            COALESCE(t.evidencias, '[]'::jsonb) AS evidencias,
             CONCAT(p.nombres, ' ', p.apellidos) AS personal,
             p.cargo AS personal_cargo,
             p.usuario_id AS personal_usuario_id,
@@ -69,6 +70,7 @@ const obtenerPorId = async (id) => {
     `SELECT t.id, TO_CHAR(t.fecha, 'YYYY-MM-DD') AS fecha,
             t.hora_inicio, t.hora_fin, t.estado, t.relevo_pendiente,
             t.personal_id, t.servicio_id, t.sede_id, t.creado_por, t.motivo_rechazo,
+            COALESCE(t.evidencias, '[]'::jsonb) AS evidencias,
             CONCAT(p.nombres, ' ', p.apellidos) AS personal,
             p.cargo AS personal_cargo,
             p.usuario_id AS personal_usuario_id,
@@ -120,9 +122,19 @@ const actualizar = async (id, { personalId, servicioId, sedeId, fecha, horaInici
 const confirmar = async (id) => {
   const { rows } = await pool.query(
     `UPDATE turnos
-     SET estado = 'pendiente', relevo_pendiente = FALSE, actualizado_en = NOW()
+     SET estado = 'confirmado', relevo_pendiente = FALSE, actualizado_en = NOW()
      WHERE id = $1 AND eliminado = FALSE RETURNING *`,
     [id]
+  );
+  return rows[0] || null;
+};
+
+const cumplir = async (id, evidencias) => {
+  const { rows } = await pool.query(
+    `UPDATE turnos
+     SET estado = 'cumplido', evidencias = $1::jsonb, relevo_pendiente = FALSE, actualizado_en = NOW()
+     WHERE id = $2 AND eliminado = FALSE RETURNING *`,
+    [JSON.stringify(evidencias), id]
   );
   return rows[0] || null;
 };
@@ -174,6 +186,7 @@ module.exports = {
   verificarSolapamiento,
   actualizar,
   confirmar,
+  cumplir,
   rechazar,
   reasignar,
   eliminar,

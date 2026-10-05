@@ -14,6 +14,8 @@ const env = {
   JWT_EXPIRATION:         process.env.JWT_EXPIRATION || '8h',
   CORS_ORIGIN:            process.env.CORS_ORIGIN || 'http://localhost:5173',
   POWER_BI_EMBED_URL:     process.env.POWER_BI_EMBED_URL || '',
+  IMAGEKIT_PUBLIC_KEY:    process.env.IMAGEKIT_PUBLIC_KEY || 'public_Fj0ZZ7V3VHgYIKtwZhBpVyiIzXI=',
+  IMAGEKIT_PRIVATE_KEY:   process.env.IMAGEKIT_PRIVATE_KEY || 'private_R0Iv34nCJ/48Klu1L4JIIpvuHAk=',
 };
 
 if (!env.JWT_SECRET) {

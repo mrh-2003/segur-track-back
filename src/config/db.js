@@ -16,8 +16,6 @@ const pool = new Pool({
   keepAlive: true,
 });
 
-pool.on('error', (err) => {
-  // Manejo de error de cliente inactivo para evitar caídas
-});
+pool.on('error', () => {});
 
 module.exports = pool;

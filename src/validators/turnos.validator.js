@@ -18,4 +18,8 @@ const esquemaReasignar = z.object({
   personalId: z.number().int().positive(),
 });
 
-module.exports = { esquemaCrear, esquemaActualizar, esquemaReasignar };
+const esquemaCumplir = z.object({
+  evidencias: z.array(z.union([z.string().min(1), z.object({ url: z.string().min(1) }).passthrough()])).min(1, 'Debe adjuntar al menos una foto de evidencia'),
+});
+
+module.exports = { esquemaCrear, esquemaActualizar, esquemaReasignar, esquemaCumplir };

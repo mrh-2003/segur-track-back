@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS turnos (
   relevo_pendiente BOOLEAN      NOT NULL DEFAULT FALSE,
   creado_por       INT          REFERENCES usuarios(id),
   motivo_rechazo   TEXT,
+  evidencias       JSONB        NOT NULL DEFAULT '[]'::jsonb,
   eliminado        BOOLEAN      NOT NULL DEFAULT FALSE,
   eliminado_en     TIMESTAMPTZ,
   eliminado_por    INT          REFERENCES usuarios(id),

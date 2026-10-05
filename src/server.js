@@ -6,6 +6,7 @@ const pool = require('./config/db');
 
 const iniciar = async () => {
   await pool.query('SELECT 1');
+  await pool.query('ALTER TABLE turnos ADD COLUMN IF NOT EXISTS evidencias JSONB NOT NULL DEFAULT \'[]\'::jsonb');
   app.listen(env.PORT, () => {
     process.stdout.write(`Segur Track API escuchando en puerto ${env.PORT}\n`);
   });

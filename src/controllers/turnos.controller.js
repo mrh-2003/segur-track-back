@@ -42,6 +42,18 @@ const confirmar = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const cumplir = async (req, res, next) => {
+  try {
+    respuestaExito(res, await turnosService.cumplir(parseInt(req.params.id, 10), req.body.evidencias, req.usuario));
+  } catch (err) { next(err); }
+};
+
+const obtenerImagekitAuth = async (req, res, next) => {
+  try {
+    respuestaExito(res, turnosService.obtenerImagekitAuth());
+  } catch (err) { next(err); }
+};
+
 const rechazar = async (req, res, next) => {
   try {
     respuestaExito(res, await turnosService.rechazar(parseInt(req.params.id, 10), req.body?.motivo, req.usuario));
@@ -74,6 +86,8 @@ module.exports = {
   crear,
   actualizar,
   confirmar,
+  cumplir,
+  obtenerImagekitAuth,
   rechazar,
   reasignar,
   eliminar,

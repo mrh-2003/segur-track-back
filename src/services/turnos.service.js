@@ -1,9 +1,11 @@
 'use strict';
 
+const crypto = require('crypto');
+const env = require('../config/env');
 const turnosRepo   = require('../repositories/turnos.repository');
 const personalRepo = require('../repositories/personal.repository');
 const actividadRepo = require('../repositories/actividad.repository');
-const { ErrorNoEncontrado, ErrorConflicto, ErrorAutorizacion } = require('../utils/errores');
+const { ErrorNoEncontrado, ErrorConflicto, ErrorAutorizacion, ErrorValidacion } = require('../utils/errores');
 
 const listarPorSemana = async (filtros) => turnosRepo.listarPorSemana(filtros);
 
@@ -90,6 +92,51 @@ const confirmar = async (id, usuario) => {
   return actualizado;
 };
 
+const cumplir = async (id, evidencias, usuario) => {
+  const t = await turnosRepo.obtenerPorId(id);
+  if (!t) throw new ErrorNoEncontrado('Turno no encontrado');
+
+  const esAsignado = (t.personal_usuario_id && t.personal_usuario_id === usuario.id) ||
+                     (usuario.personalId && t.personal_id === usuario.personalId);
+  const esAdmin = usuario.rol === 'administrador';
+  const esSupervisor = usuario.rol === 'supervisor';
+
+  if (!esAsignado && !esAdmin && !esSupervisor) {
+    throw new ErrorAutorizacion('No está autorizado para culminar este turno');
+  }
+
+  if (t.estado === 'sin_confirmar') {
+    throw new ErrorConflicto('El turno debe estar confirmado antes de ser culminado');
+  }
+
+  const arregloEvidencias = Array.isArray(evidencias) ? evidencias : [];
+  if (arregloEvidencias.length === 0) {
+    throw new ErrorValidacion('Debe adjuntar al menos una foto de evidencia para culminar el turno');
+  }
+
+  const actualizado = await turnosRepo.cumplir(id, arregloEvidencias);
+
+  await actividadRepo.registrar({
+    tipo: 'turno_cumplido',
+    descripcion: `Turno del ${t.fecha} para ${t.personal} cumplido con ${arregloEvidencias.length} evidencias`,
+    usuarioId: usuario.id,
+  });
+
+  return actualizado;
+};
+
+const obtenerImagekitAuth = () => {
+  const token = crypto.randomBytes(16).toString('hex');
+  const expire = Math.floor(Date.now() / 1000) + 3000;
+  const signature = crypto.createHmac('sha1', env.IMAGEKIT_PRIVATE_KEY).update(token + expire).digest('hex');
+  return {
+    token,
+    expire,
+    signature,
+    publicKey: env.IMAGEKIT_PUBLIC_KEY,
+  };
+};
+
 const rechazar = async (id, motivo, usuario) => {
   const t = await turnosRepo.obtenerPorId(id);
   if (!t) throw new ErrorNoEncontrado('Turno no encontrado');
@@ -171,6 +218,8 @@ module.exports = {
   crear,
   actualizar,
   confirmar,
+  cumplir,
+  obtenerImagekitAuth,
   rechazar,
   reasignar,
   eliminar,
