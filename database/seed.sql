@@ -20,28 +20,28 @@ TRUNCATE TABLE
 RESTART IDENTITY CASCADE;
 
 INSERT INTO usuarios (id, nombre, correo, clave_hash, rol, activo, debe_cambiar_clave) VALUES
-(1, 'Administrador Sistema', 'admin@segurtrack.com', '$2a$10$dMbbbbey.8AVCPm5A4ZUR.XeC/9nbbESSL6zBOBTirOw1YpOZ7Sbi', 'administrador', TRUE, FALSE),
-(2, 'María Torres', 'mtorres@segurtrack.com', '$2a$10$TX352lT05zdL3dd1Fz.O3OILvw72nP8ffWMtDkq6CWBuAkJTH4N.6', 'supervisor', TRUE, TRUE),
-(3, 'Juan López', 'jlopez@segurtrack.com', '$2a$10$ljNLoP3gyxlUUC9.c2w74e4baalGiVUxchBZrc6yH4Y8LnoHfEoZ6', 'operador', TRUE, TRUE),
-(4, 'Carla Álvarez', 'calvarez@segurtrack.com', '$2a$10$JXcTwrXVVWFB8qqAWLRKPuha5dnwjyu2jQdZkvoPwYGXc/OPx0LES', 'operador', TRUE, TRUE),
-(5, 'Diego Rojas', 'drojas@segurtrack.com', '$2a$10$aXGHTP/JLRWdPdZkoVVyNu9pWDL1pzTv1EaoqhtlI6PBD554ULSSS', 'operador', TRUE, TRUE),
-(6, 'Lucía Sánchez', 'lsanchez@segurtrack.com', '$2a$10$H119zhSBsIjMmCpDURyFtOltyU3EKNsg2lnNyiw.x0eBS11WumYIK', 'operador', FALSE, TRUE),
-(7, 'Pablo Contreras', 'pcontreras@segurtrack.com', '$2a$10$lj/Um3mS72pi8dqSe65EQ.rh3U6f8Oy9HT5BcHDlCfi6y/ciDRCKa', 'operador', TRUE, TRUE),
-(8, 'Carla Ruiz', 'cruiz@segurtrack.com', '$2a$10$w8874NeCWqtDqzUhKh9F6eH9dn/Z9jGwkhbrKHgtrZOXdz10Kajqe', 'operador', TRUE, TRUE),
-(9, 'Ana Pérez', 'aperez@segurtrack.com', '$2a$10$.WtCU/KDplFkLJXW9qhsIuElnd7hXeOqqOG5gBLgu9ThdDR0LhqyG', 'operador', TRUE, TRUE),
-(10, 'Luis García', 'lgarcia@segurtrack.com', '$2a$10$dbUoWpFjoktoUoEQa2PLp.PaIdhPfFQxdplxnipijHBgc.YHTLq2i', 'operador', TRUE, TRUE),
-(11, 'Carla Gómez', 'cgomez@segurtrack.com', '$2a$10$PBBsISlrz/iQWFJIbtPOwOGu3mX7ED3bM/SZNNM015qdZRYem/Qra', 'supervisor', TRUE, TRUE),
-(12, 'Miguel Sánchez', 'msanchez@segurtrack.com', '$2a$10$rZkrTH/6F5ooWbUQOSMNMOt2UDGRLkJ5gnji8C9ToBBlB4l.wA0pG', 'supervisor', TRUE, TRUE),
-(13, 'Laura Gómez', 'lgomez@segurtrack.com', '$2a$10$QcrOsoflUqRhIpYrMqhv6u8ZfzX90JZRT5Ut/pYOUHF0U75N7tKSG', 'supervisor', TRUE, TRUE),
-(14, 'Roberto Mendoza', 'rmendoza@segurtrack.com', '$2a$10$Ztsr58vrUDnJAt7XnTbgE.cRs42ck1zajeCGSjpN/dyvNJIO4Qzhu', 'operador', TRUE, TRUE),
-(15, 'Elena Castro', 'ecastro@segurtrack.com', '$2a$10$rGgsKrNLiL8KxSMjTRYpB.XS9Iqyr99.09WbtlW1RER.hLuBiJYM.', 'operador', TRUE, TRUE),
-(16, 'Fernando Quispe', 'fquispe@segurtrack.com', '$2a$10$RmUkFFv92pb3DFEBE.1uXuHpT6wla51VfV8H337D/odq4rxEb1fBy', 'operador', TRUE, TRUE),
-(17, 'Patricia Flores', 'pflores@segurtrack.com', '$2a$10$NpEbhAQzAQVgCZQORXZxVeV3TMhB1X0bBfoguieDi59SOUC/LRAum', 'operador', TRUE, TRUE),
-(18, 'Carlos Vega', 'cvega@segurtrack.com', '$2a$10$g2k2M4eLAzUrDPbJJQG2N.OsXYLgCp1Ne.6dxTCIu82EFuhWPFimu', 'operador', TRUE, TRUE),
-(19, 'Andrea Morales', 'amorales@segurtrack.com', '$2a$10$MnJlhaoLf8A/wk/ZI1m00eaQuMGn20weBcWL4ywzixE5ADDvUwWo.', 'operador', TRUE, TRUE),
-(20, 'José Herrera', 'jherrera@segurtrack.com', '$2a$10$PwLs1mI/cfdneZz21VkqyemgJr8tcmmt1gIyt.N68Wla0O5bz9p0e', 'supervisor', TRUE, TRUE),
-(21, 'Sofia Reyes', 'sreyes@segurtrack.com', '$2a$10$K5cuvQRpaCIfRwk/rHwHNOjY4Kp5WLSY.9aCxA9Bl0ixTZzC4YGXm', 'operador', TRUE, TRUE),
-(22, 'Carlos Mendoza', 'jefe@segurtrack.com', '$2a$10$dMbbbbey.8AVCPm5A4ZUR.XeC/9nbbESSL6zBOBTirOw1YpOZ7Sbi', 'jefe_operaciones', TRUE, FALSE);
+(1, 'Administrador Sistema', 'admin@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'administrador', TRUE, FALSE), -- Contraseña: Admin1234
+(2, 'María Torres', 'mtorres@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'supervisor', TRUE, FALSE), -- Contraseña: Admin1234
+(3, 'Juan López', 'jlopez@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(4, 'Carla Álvarez', 'calvarez@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(5, 'Diego Rojas', 'drojas@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(6, 'Lucía Sánchez', 'lsanchez@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', FALSE, FALSE), -- Contraseña: Admin1234
+(7, 'Pablo Contreras', 'pcontreras@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(8, 'Carla Ruiz', 'cruiz@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(9, 'Ana Pérez', 'aperez@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(10, 'Luis García', 'lgarcia@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(11, 'Carla Gómez', 'cgomez@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'supervisor', TRUE, FALSE), -- Contraseña: Admin1234
+(12, 'Miguel Sánchez', 'msanchez@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'supervisor', TRUE, FALSE), -- Contraseña: Admin1234
+(13, 'Laura Gómez', 'lgomez@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'supervisor', TRUE, FALSE), -- Contraseña: Admin1234
+(14, 'Roberto Mendoza', 'rmendoza@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(15, 'Elena Castro', 'ecastro@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(16, 'Fernando Quispe', 'fquispe@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(17, 'Patricia Flores', 'pflores@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(18, 'Carlos Vega', 'cvega@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(19, 'Andrea Morales', 'amorales@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(20, 'José Herrera', 'jherrera@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'supervisor', TRUE, FALSE), -- Contraseña: Admin1234
+(21, 'Sofia Reyes', 'sreyes@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'operador', TRUE, FALSE), -- Contraseña: Admin1234
+(22, 'Carlos Mendoza', 'jefe@segurtrack.com', '$2a$10$tBXOKWDXenxuSBcsyI/KaezbJ2xSpMH6VJ0pk2C3dMuRft2QsVa7u', 'jefe_operaciones', TRUE, FALSE); -- Contraseña: Admin1234
 SELECT setval('usuarios_id_seq', 22);
 
 INSERT INTO sedes (id, nombre, direccion) VALUES
@@ -59,27 +59,27 @@ INSERT INTO clientes (id, nombre, contacto) VALUES
 SELECT setval('clientes_id_seq', 5);
 
 INSERT INTO personal (id, nombres, apellidos, documento, cargo, estado, correo, sede_id, usuario_id) VALUES
-(1, 'María', 'Torres', '32456789', 'supervisor', 'activo', 'mtorres@segurtrack.com', 1, 2),
-(2, 'Juan', 'López', '28341776', 'agente', 'activo', 'jlopez@segurtrack.com', 1, 3),
-(3, 'Carla', 'Álvarez', '41987653', 'agente', 'activo', 'calvarez@segurtrack.com', 2, 4),
-(4, 'Diego', 'Rojas', '37112445', 'agente', 'activo', 'drojas@segurtrack.com', 1, 5),
-(5, 'Lucía', 'Sánchez', '29667221', 'administrativo', 'inactivo', 'lsanchez@segurtrack.com', 2, 6),
-(6, 'Pablo', 'Contreras', '36554998', 'agente', 'activo', 'pcontreras@segurtrack.com', 3, 7),
-(7, 'Carla', 'Ruiz', '40123456', 'agente', 'activo', 'cruiz@segurtrack.com', 1, 8),
-(8, 'Ana', 'Pérez', '35678901', 'agente', 'activo', 'aperez@segurtrack.com', 2, 9),
-(9, 'Luis', 'García', '42345678', 'agente', 'activo', 'lgarcia@segurtrack.com', 3, 10),
-(10, 'Carla', 'Gómez', '38901234', 'supervisor', 'activo', 'cgomez@segurtrack.com', 3, 11),
-(11, 'Miguel', 'Sánchez', '31234567', 'supervisor', 'activo', 'msanchez@segurtrack.com', 2, 12),
-(12, 'Laura', 'Gómez', '39012345', 'supervisor', 'activo', 'lgomez@segurtrack.com', 1, 13),
-(13, 'Roberto', 'Mendoza', '44567890', 'agente', 'activo', 'rmendoza@segurtrack.com', 1, 14),
-(14, 'Elena', 'Castro', '33456789', 'agente', 'activo', 'ecastro@segurtrack.com', 2, 15),
-(15, 'Fernando', 'Quispe', '45678901', 'agente', 'activo', 'fquispe@segurtrack.com', 3, 16),
-(16, 'Patricia', 'Flores', '34567890', 'agente', 'activo', 'pflores@segurtrack.com', 1, 17),
-(17, 'Carlos', 'Vega', '46789012', 'agente', 'activo', 'cvega@segurtrack.com', 2, 18),
-(18, 'Andrea', 'Morales', '35678902', 'agente', 'activo', 'amorales@segurtrack.com', 3, 19),
-(19, 'José', 'Herrera', '47890123', 'supervisor', 'activo', 'jherrera@segurtrack.com', 1, 20),
-(20, 'Sofia', 'Reyes', '36789012', 'agente', 'activo', 'sreyes@segurtrack.com', 2, 21),
-(21, 'Carlos', 'Mendoza', '10293847', 'jefe_operaciones', 'activo', 'jefe@segurtrack.com', 1, 22);
+(1, 'María', 'Torres', '32456789', 'supervisor', 'activo', 'mtorres@segurtrack.com', 1, 2), -- Contraseña: Admin1234
+(2, 'Juan', 'López', '28341776', 'agente', 'activo', 'jlopez@segurtrack.com', 1, 3), -- Contraseña: Admin1234
+(3, 'Carla', 'Álvarez', '41987653', 'agente', 'activo', 'calvarez@segurtrack.com', 2, 4), -- Contraseña: Admin1234
+(4, 'Diego', 'Rojas', '37112445', 'agente', 'activo', 'drojas@segurtrack.com', 1, 5), -- Contraseña: Admin1234
+(5, 'Lucía', 'Sánchez', '29667221', 'administrativo', 'inactivo', 'lsanchez@segurtrack.com', 2, 6), -- Contraseña: Admin1234
+(6, 'Pablo', 'Contreras', '36554998', 'agente', 'activo', 'pcontreras@segurtrack.com', 3, 7), -- Contraseña: Admin1234
+(7, 'Carla', 'Ruiz', '40123456', 'agente', 'activo', 'cruiz@segurtrack.com', 1, 8), -- Contraseña: Admin1234
+(8, 'Ana', 'Pérez', '35678901', 'agente', 'activo', 'aperez@segurtrack.com', 2, 9), -- Contraseña: Admin1234
+(9, 'Luis', 'García', '42345678', 'agente', 'activo', 'lgarcia@segurtrack.com', 3, 10), -- Contraseña: Admin1234
+(10, 'Carla', 'Gómez', '38901234', 'supervisor', 'activo', 'cgomez@segurtrack.com', 3, 11), -- Contraseña: Admin1234
+(11, 'Miguel', 'Sánchez', '31234567', 'supervisor', 'activo', 'msanchez@segurtrack.com', 2, 12), -- Contraseña: Admin1234
+(12, 'Laura', 'Gómez', '39012345', 'supervisor', 'activo', 'lgomez@segurtrack.com', 1, 13), -- Contraseña: Admin1234
+(13, 'Roberto', 'Mendoza', '44567890', 'agente', 'activo', 'rmendoza@segurtrack.com', 1, 14), -- Contraseña: Admin1234
+(14, 'Elena', 'Castro', '33456789', 'agente', 'activo', 'ecastro@segurtrack.com', 2, 15), -- Contraseña: Admin1234
+(15, 'Fernando', 'Quispe', '45678901', 'agente', 'activo', 'fquispe@segurtrack.com', 3, 16), -- Contraseña: Admin1234
+(16, 'Patricia', 'Flores', '34567890', 'agente', 'activo', 'pflores@segurtrack.com', 1, 17), -- Contraseña: Admin1234
+(17, 'Carlos', 'Vega', '46789012', 'agente', 'activo', 'cvega@segurtrack.com', 2, 18), -- Contraseña: Admin1234
+(18, 'Andrea', 'Morales', '35678902', 'agente', 'activo', 'amorales@segurtrack.com', 3, 19), -- Contraseña: Admin1234
+(19, 'José', 'Herrera', '47890123', 'supervisor', 'activo', 'jherrera@segurtrack.com', 1, 20), -- Contraseña: Admin1234
+(20, 'Sofia', 'Reyes', '36789012', 'agente', 'activo', 'sreyes@segurtrack.com', 2, 21), -- Contraseña: Admin1234
+(21, 'Carlos', 'Mendoza', '10293847', 'jefe_operaciones', 'activo', 'jefe@segurtrack.com', 1, 22); -- Contraseña: Admin1234
 SELECT setval('personal_id_seq', 21);
 
 INSERT INTO servicios (id, nombre, cliente_id, sede_id, supervisor_id, hora_inicio, hora_fin, estado, fecha_inicio, fecha_fin) VALUES

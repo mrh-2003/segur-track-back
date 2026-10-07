@@ -145,6 +145,52 @@ const obtenerDetalleOperativo = async (servicioId) => {
   };
 };
 
+const asignarPersonal = async (servicioId, personalId, usuario) => {
+  const servicio = await obtenerPorId(servicioId);
+  const persona = await personalRepo.obtenerPorId(personalId);
+  if (!persona || persona.estado !== 'activo') {
+    throw new ErrorConflicto('El personal seleccionado no se encuentra disponible');
+  }
+  const asignados = await serviciosRepo.listarPersonalAsignado(servicioId);
+  const yaAsignado = asignados.some((p) => p.id === Number(personalId));
+  if (yaAsignado) {
+    throw new ErrorConflicto('El personal ya se encuentra asignado al servicio');
+  }
+  const resultado = await serviciosRepo.asignarPersonal(servicioId, personalId, usuario.id);
+  await actividadRepo.registrar({
+    tipo: 'personal_asignado',
+    descripcion: `${persona.nombres} ${persona.apellidos} asignado al servicio "${servicio.nombre}"`,
+    usuarioId: usuario.id,
+  });
+  return resultado;
+};
+
+const desasignarPersonal = async (servicioId, asignacionId, usuario) => {
+  const servicio = await obtenerPorId(servicioId);
+  const resultado = await serviciosRepo.desasignarPersonal(asignacionId, usuario.id);
+  if (!resultado) throw new ErrorNoEncontrado('Asignación no encontrada');
+  await actividadRepo.registrar({
+    tipo: 'personal_desasignado',
+    descripcion: `Personal desasignado del servicio "${servicio.nombre}"`,
+    usuarioId: usuario.id,
+  });
+  return resultado;
+};
+
+const listarPersonalAsignado = async (servicioId) => {
+  await obtenerPorId(servicioId);
+  return serviciosRepo.listarPersonalAsignado(servicioId);
+};
+
+const listarTodasAsignaciones = async ({ pagina, limite, servicioId, personalId }) => {
+  const { offset, paginaActual, limiteParsed } = require('../utils/paginacion').paginar(pagina, limite);
+  const { filas, total } = await serviciosRepo.listarTodasAsignaciones({ servicioId, personalId, limite: limiteParsed, offset });
+  return {
+    datos: filas,
+    meta: { total, pagina: paginaActual, limite: limiteParsed, paginas: Math.ceil(total / limiteParsed) },
+  };
+};
+
 module.exports = {
   listar,
   obtenerResumen,
@@ -161,4 +207,8 @@ module.exports = {
   crearRequerimiento,
   eliminarRequerimiento,
   obtenerDetalleOperativo,
+  asignarPersonal,
+  desasignarPersonal,
+  listarPersonalAsignado,
+  listarTodasAsignaciones,
 };

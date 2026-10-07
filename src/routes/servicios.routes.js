@@ -10,6 +10,7 @@ const router = Router();
 
 router.get('/', ctrl.listar);
 router.get('/resumen', ctrl.resumen);
+router.get('/asignaciones/todas', ctrl.listarTodasAsignaciones);
 router.get('/:id', ctrl.obtener);
 router.get('/:id/detalle-operativo', ctrl.detalleOperativo);
 
@@ -25,5 +26,9 @@ router.delete('/:id/protocolos/:protocoloId', autorizar('administrador', 'jefe_o
 router.get('/:id/requerimientos', ctrl.listarRequerimientos);
 router.post('/:id/requerimientos', autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.crearRequerimiento);
 router.delete('/:id/requerimientos/:reqId', autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.eliminarRequerimiento);
+
+router.get('/:id/personal', ctrl.listarPersonalAsignado);
+router.post('/:id/personal', autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.asignarPersonal);
+router.delete('/:id/personal/:asignacionId', autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.desasignarPersonal);
 
 module.exports = router;

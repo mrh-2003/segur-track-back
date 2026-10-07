@@ -392,7 +392,6 @@ async function obtenerDatosReporte(tipo) {
     return { titulo: 'Reporte de Evaluación Multicriterio (MCDA)', columnas, filas };
   }
 
-  // default / bi
   const { rows } = await pool.query(`
     SELECT s.nombre AS servicio,
            ROUND(COUNT(t.id) FILTER (WHERE t.estado = 'cumplido')::NUMERIC / NULLIF(COUNT(t.id), 0) * 100, 1) AS cumplimiento_pct,

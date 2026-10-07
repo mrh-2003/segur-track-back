@@ -16,6 +16,8 @@ const sedesRutas = require('./sedes.routes');
 const clientesRutas = require('./clientes.routes');
 const protocolosRutas = require('./protocolos.routes');
 const evidenciasRutas = require('./evidencias.routes');
+const usuariosRutas = require('./usuarios.routes');
+const monitorRutas = require('./monitor.routes');
 
 const router = Router();
 
@@ -32,6 +34,8 @@ router.use('/sedes', autenticar, sedesRutas);
 router.use('/clientes', autenticar, clientesRutas);
 router.use('/protocolos', autenticar, protocolosRutas);
 router.use('/evidencias', autenticar, evidenciasRutas);
+router.use('/usuarios', autenticar, usuariosRutas);
+router.use('/monitor', autenticar, monitorRutas);
 
 router.get('/tipos-incidencia', autenticar, (req, res, next) => {
   require('../controllers/incidencias.controller').listarTipos(req, res, next);

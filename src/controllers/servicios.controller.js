@@ -157,6 +157,41 @@ const detalleOperativo = async (req, res, next) => {
   }
 };
 
+const listarPersonalAsignado = async (req, res, next) => {
+  try {
+    const lista = await serviciosService.listarPersonalAsignado(parseInt(req.params.id, 10));
+    respuestaExito(res, lista);
+  } catch (err) { next(err); }
+};
+
+const asignarPersonal = async (req, res, next) => {
+  try {
+    const servicioId = parseInt(req.params.id, 10);
+    const personalId = parseInt(req.body.personalId, 10);
+    const resultado = await serviciosService.asignarPersonal(servicioId, personalId, req.usuario);
+    respuestaExito(res, resultado);
+  } catch (err) { next(err); }
+};
+
+const desasignarPersonal = async (req, res, next) => {
+  try {
+    const servicioId = parseInt(req.params.id, 10);
+    const asignacionId = parseInt(req.params.asignacionId, 10);
+    const resultado = await serviciosService.desasignarPersonal(servicioId, asignacionId, req.usuario);
+    respuestaExito(res, resultado);
+  } catch (err) { next(err); }
+};
+
+const listarTodasAsignaciones = async (req, res, next) => {
+  try {
+    const { pagina, limite, servicioId, personalId } = req.query;
+    const resultado = await serviciosService.listarTodasAsignaciones({ pagina, limite,
+      servicioId: servicioId ? parseInt(servicioId, 10) : null,
+      personalId: personalId ? parseInt(personalId, 10) : null });
+    respuestaExito(res, resultado.datos, resultado.meta);
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   listar,
   resumen,
@@ -173,4 +208,8 @@ module.exports = {
   crearRequerimiento,
   eliminarRequerimiento,
   detalleOperativo,
+  listarPersonalAsignado,
+  asignarPersonal,
+  desasignarPersonal,
+  listarTodasAsignaciones,
 };

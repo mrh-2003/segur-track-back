@@ -229,7 +229,7 @@ const eliminarRequerimiento = async (id, usuarioId) => {
 
 const listarPersonalAsignado = async (servicioId) => {
   const { rows } = await pool.query(
-    `SELECT p.id, p.nombres, p.apellidos, p.documento, p.cargo, p.estado, p.correo
+    `SELECT sp.id AS asignacion_id, p.id, p.nombres, p.apellidos, p.documento, p.cargo, p.estado, p.correo
      FROM personal p
      JOIN servicio_personal sp ON p.id = sp.personal_id
      WHERE sp.servicio_id = $1 AND sp.eliminado = FALSE AND p.eliminado = FALSE
@@ -237,6 +237,64 @@ const listarPersonalAsignado = async (servicioId) => {
     [servicioId]
   );
   return rows;
+};
+
+const asignarPersonal = async (servicioId, personalId, usuarioId) => {
+  const { rows: [existente] } = await pool.query(
+    `SELECT id, eliminado FROM servicio_personal WHERE servicio_id = $1 AND personal_id = $2`,
+    [servicioId, personalId]
+  );
+  if (existente && !existente.eliminado) return existente;
+  if (existente && existente.eliminado) {
+    const { rows: [r] } = await pool.query(
+      `UPDATE servicio_personal SET eliminado = FALSE, eliminado_en = NULL, eliminado_por = NULL, actualizado_en = NOW()
+       WHERE id = $1 RETURNING *`,
+      [existente.id]
+    );
+    return r;
+  }
+  const { rows: [r] } = await pool.query(
+    `INSERT INTO servicio_personal (servicio_id, personal_id) VALUES ($1, $2) RETURNING *`,
+    [servicioId, personalId]
+  );
+  return r;
+};
+
+const desasignarPersonal = async (asignacionId, usuarioId) => {
+  const { rows } = await pool.query(
+    `UPDATE servicio_personal
+     SET eliminado = TRUE, eliminado_en = NOW(), eliminado_por = $2, actualizado_en = NOW()
+     WHERE id = $1 AND eliminado = FALSE RETURNING id`,
+    [asignacionId, usuarioId]
+  );
+  return rows[0] || null;
+};
+
+const listarTodasAsignaciones = async ({ servicioId, personalId, limite, offset }) => {
+  const condiciones = ['sp.eliminado = FALSE', 's.eliminado = FALSE', 'p.eliminado = FALSE'];
+  const valores = [];
+  let idx = 1;
+  if (servicioId) { condiciones.push(`sp.servicio_id = $${idx}`); valores.push(servicioId); idx++; }
+  if (personalId) { condiciones.push(`sp.personal_id = $${idx}`); valores.push(personalId); idx++; }
+  const where = condiciones.join(' AND ');
+  const { rows: [{ total }] } = await pool.query(
+    `SELECT COUNT(*) AS total FROM servicio_personal sp
+     JOIN servicios s ON s.id = sp.servicio_id
+     JOIN personal p ON p.id = sp.personal_id
+     WHERE ${where}`, valores
+  );
+  const { rows } = await pool.query(
+    `SELECT sp.id AS asignacion_id, s.id AS servicio_id, s.nombre AS servicio, s.estado AS estado_servicio,
+            p.id AS personal_id, p.nombres, p.apellidos, p.cargo, p.documento, p.estado
+     FROM servicio_personal sp
+     JOIN servicios s ON s.id = sp.servicio_id
+     JOIN personal p ON p.id = sp.personal_id
+     WHERE ${where}
+     ORDER BY s.nombre, p.nombres
+     LIMIT $${idx} OFFSET $${idx + 1}`,
+    [...valores, limite, offset]
+  );
+  return { filas: rows, total: parseInt(total, 10) };
 };
 
 module.exports = {
@@ -255,4 +313,7 @@ module.exports = {
   crearRequerimiento,
   eliminarRequerimiento,
   listarPersonalAsignado,
+  asignarPersonal,
+  desasignarPersonal,
+  listarTodasAsignaciones,
 };

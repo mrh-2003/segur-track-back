@@ -14,4 +14,11 @@ const metaPaginacion = (pagina, limite, total) => ({
   totalPaginas: Math.ceil(total / limite),
 });
 
-module.exports = { paginacion, metaPaginacion };
+const paginar = (pagina, limite) => {
+  const paginaActual = Math.max(1, parseInt(pagina, 10) || 1);
+  const limiteParsed = Math.min(100, Math.max(1, parseInt(limite, 10) || 20));
+  const offset = (paginaActual - 1) * limiteParsed;
+  return { offset, paginaActual, limiteParsed };
+};
+
+module.exports = { paginacion, metaPaginacion, paginar };
