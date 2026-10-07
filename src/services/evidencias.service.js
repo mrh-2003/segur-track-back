@@ -39,6 +39,15 @@ const crear = async (datos, usuario) => {
   if (!personalId && usuario.personalId) {
     personalId = usuario.personalId;
   }
+  if (!personalId && servicio.supervisor_id) {
+    personalId = servicio.supervisor_id;
+  }
+  if (!personalId) {
+    const { filas } = await serviciosRepo.listarPersonalAsignado({ servicioId: datos.servicioId, limite: 1 });
+    if (filas && filas.length > 0) {
+      personalId = filas[0].personal_id;
+    }
+  }
 
   if (!personalId) {
     throw new ErrorValidacion('Debe especificarse el personal operativo responsable', [
