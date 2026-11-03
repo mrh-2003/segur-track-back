@@ -107,17 +107,31 @@ GROUP BY em.id, s.nombre, c.nombre, em.fecha_evaluacion, em.puntaje_global, em.n
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'bi_lector') THEN
-    CREATE ROLE bi_lector LOGIN PASSWORD 'bi_lector_pass';
+    BEGIN
+      CREATE ROLE bi_lector LOGIN PASSWORD 'bi_lector_pass';
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'No se pudo crear el rol bi_lector: %', SQLERRM;
+    END;
   END IF;
 END
 $$;
 
-GRANT USAGE ON SCHEMA public TO bi_lector;
-GRANT SELECT ON
-  vw_bi_cumplimiento_turnos,
-  vw_bi_cumplimiento_servicios,
-  vw_bi_incidencias,
-  vw_bi_incidencias_por_tipo,
-  vw_bi_desempeno_servicio,
-  vw_bi_evaluacion_multicriterio
-TO bi_lector;
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'bi_lector') THEN
+    BEGIN
+      GRANT USAGE ON SCHEMA public TO bi_lector;
+      GRANT SELECT ON
+        vw_bi_cumplimiento_turnos,
+        vw_bi_cumplimiento_servicios,
+        vw_bi_incidencias,
+        vw_bi_incidencias_por_tipo,
+        vw_bi_desempeno_servicio,
+        vw_bi_evaluacion_multicriterio
+      TO bi_lector;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'No se pudieron otorgar permisos a bi_lector: %', SQLERRM;
+    END;
+  END IF;
+END
+$$;
