@@ -1,0 +1,178 @@
+{
+  "generado": "2026-11-04T14:32:20.563Z",
+  "tablas": [
+    {
+      "tabla": "bi.cargas",
+      "filas": 4
+    },
+    {
+      "tabla": "bi.dim_cliente",
+      "filas": 6
+    },
+    {
+      "tabla": "bi.dim_fecha",
+      "filas": 34
+    },
+    {
+      "tabla": "bi.dim_personal",
+      "filas": 71
+    },
+    {
+      "tabla": "bi.dim_sede",
+      "filas": 4
+    },
+    {
+      "tabla": "bi.dim_servicio",
+      "filas": 12
+    },
+    {
+      "tabla": "bi.hecho_incidencia",
+      "filas": 766
+    },
+    {
+      "tabla": "bi.hecho_turno",
+      "filas": 1609
+    },
+    {
+      "tabla": "bi.hecho_evidencia",
+      "filas": 1609
+    },
+    {
+      "tabla": "public.configuracion_operativa",
+      "filas": 1
+    },
+    {
+      "tabla": "public.contenedores",
+      "filas": 24
+    },
+    {
+      "tabla": "public.migraciones_aplicadas",
+      "filas": 6
+    },
+    {
+      "tabla": "public.modelo_operativo",
+      "filas": 5
+    },
+    {
+      "tabla": "public.transportistas",
+      "filas": 4
+    },
+    {
+      "tabla": "public.ubicaciones_operativas",
+      "filas": 8
+    },
+    {
+      "tabla": "public.usuarios",
+      "filas": 6
+    },
+    {
+      "tabla": "public.actividad_reciente",
+      "filas": 76
+    },
+    {
+      "tabla": "public.clientes",
+      "filas": 6
+    },
+    {
+      "tabla": "public.criterios_mcda",
+      "filas": 5
+    },
+    {
+      "tabla": "public.importaciones",
+      "filas": 1
+    },
+    {
+      "tabla": "public.protocolos",
+      "filas": 5
+    },
+    {
+      "tabla": "public.reportes_generados",
+      "filas": 13
+    },
+    {
+      "tabla": "public.sedes",
+      "filas": 4
+    },
+    {
+      "tabla": "public.personal",
+      "filas": 71
+    },
+    {
+      "tabla": "public.personal_ausencias",
+      "filas": 8
+    },
+    {
+      "tabla": "public.servicios",
+      "filas": 12
+    },
+    {
+      "tabla": "public.evaluaciones_multicriterio",
+      "filas": 12
+    },
+    {
+      "tabla": "public.evaluacion_criterios",
+      "filas": 60
+    },
+    {
+      "tabla": "public.evaluaciones_operativas",
+      "filas": 36
+    },
+    {
+      "tabla": "public.servicio_contenedores",
+      "filas": 24
+    },
+    {
+      "tabla": "public.servicio_custodias",
+      "filas": 6
+    },
+    {
+      "tabla": "public.servicio_personal",
+      "filas": 59
+    },
+    {
+      "tabla": "public.servicio_protocolos",
+      "filas": 37
+    },
+    {
+      "tabla": "public.servicio_requerimientos",
+      "filas": 37
+    },
+    {
+      "tabla": "public.tipos_incidencia",
+      "filas": 8
+    },
+    {
+      "tabla": "public.turnos",
+      "filas": 1612
+    },
+    {
+      "tabla": "public.evidencias_servicio",
+      "filas": 2683
+    },
+    {
+      "tabla": "public.importacion_filas",
+      "filas": 24
+    },
+    {
+      "tabla": "public.incidencias",
+      "filas": 766
+    },
+    {
+      "tabla": "public.incidencias_historial",
+      "filas": 770
+    },
+    {
+      "tabla": "public.turnos_historial",
+      "filas": 1665
+    },
+    {
+      "tabla": "public.vehiculos",
+      "filas": 20
+    },
+    {
+      "tabla": "public.servicio_vehiculos",
+      "filas": 24
+    }
+  ],
+  "filas": 12213
+}
