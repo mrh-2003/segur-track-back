@@ -13,7 +13,9 @@ const listar = async (req, res, next) => {
       q: req.query.q || null,
       tipoId: req.query.tipoId ? parseInt(req.query.tipoId, 10) : null,
       estado: req.query.estado || null,
-      servicioId: req.query.servicioId ? parseInt(req.query.servicioId, 10) : null,
+      servicioId: req.query.servicioId
+        ? parseInt(req.query.servicioId, 10)
+        : null,
     });
     respuestaExito(res, filas, metaPaginacion(pagina, limite, total));
   } catch (err) {
@@ -23,7 +25,7 @@ const listar = async (req, res, next) => {
 
 const resumen = async (req, res, next) => {
   try {
-    respuestaExito(res, await incidenciasService.obtenerResumen());
+    respuestaExito(res, await incidenciasService.obtenerResumen(req.query));
   } catch (err) {
     next(err);
   }
@@ -39,7 +41,10 @@ const recientes = async (req, res, next) => {
 
 const obtener = async (req, res, next) => {
   try {
-    respuestaExito(res, await incidenciasService.obtenerPorId(parseInt(req.params.id, 10)));
+    respuestaExito(
+      res,
+      await incidenciasService.obtenerPorId(parseInt(req.params.id, 10))
+    );
   } catch (err) {
     next(err);
   }
@@ -47,7 +52,14 @@ const obtener = async (req, res, next) => {
 
 const crear = async (req, res, next) => {
   try {
-    respuestaCreado(res, await incidenciasService.crear(req.body, req.usuario.id));
+    respuestaCreado(
+      res,
+      await require('../services/incidencias-operativas.service').guardar(
+        null,
+        req.body,
+        req.usuario.id
+      )
+    );
   } catch (err) {
     next(err);
   }
@@ -55,7 +67,14 @@ const crear = async (req, res, next) => {
 
 const actualizar = async (req, res, next) => {
   try {
-    respuestaExito(res, await incidenciasService.actualizar(parseInt(req.params.id, 10), req.body, req.usuario.id));
+    respuestaExito(
+      res,
+      await require('../services/incidencias-operativas.service').guardar(
+        parseInt(req.params.id, 10),
+        req.body,
+        req.usuario.id
+      )
+    );
   } catch (err) {
     next(err);
   }
@@ -64,7 +83,12 @@ const actualizar = async (req, res, next) => {
 const cambiarEstado = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const resultado = await incidenciasService.cambiarEstado(id, req.body.estado, req.body.observacion, req.usuario.id);
+    const resultado =
+      await require('../services/incidencias-operativas.service').guardar(
+        id,
+        req.body,
+        req.usuario.id
+      );
     respuestaExito(res, resultado);
   } catch (err) {
     next(err);
@@ -74,7 +98,12 @@ const cambiarEstado = async (req, res, next) => {
 const registrarObservacion = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const resultado = await incidenciasService.registrarObservacion(id, req.body.observacion, req.usuario.id);
+    const resultado =
+      await require('../services/incidencias-operativas.service').guardar(
+        id,
+        { observacion: req.body.observacion },
+        req.usuario.id
+      );
     respuestaExito(res, resultado);
   } catch (err) {
     next(err);
@@ -83,7 +112,10 @@ const registrarObservacion = async (req, res, next) => {
 
 const eliminar = async (req, res, next) => {
   try {
-    await incidenciasService.eliminar(parseInt(req.params.id, 10), req.usuario.id);
+    await incidenciasService.eliminar(
+      parseInt(req.params.id, 10),
+      req.usuario.id
+    );
     respuestaExito(res, { mensaje: 'Incidencia eliminada' });
   } catch (err) {
     next(err);

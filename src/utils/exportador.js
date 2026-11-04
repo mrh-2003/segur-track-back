@@ -7,17 +7,17 @@ const crcTable = new Uint32Array(256);
 for (let n = 0; n < 256; n++) {
   let c = n;
   for (let k = 0; k < 8; k++) {
-    c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
   }
   crcTable[n] = c;
 }
 
 function calcularCrc32(buf) {
-  let crc = 0xFFFFFFFF;
+  let crc = 0xffffffff;
   for (let i = 0; i < buf.length; i++) {
-    crc = (crc >>> 8) ^ crcTable[(crc ^ buf[i]) & 0xFF];
+    crc = (crc >>> 8) ^ crcTable[(crc ^ buf[i]) & 0xff];
   }
-  return (crc ^ 0xFFFFFFFF) >>> 0;
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function crearZip(archivos) {
@@ -26,7 +26,9 @@ function crearZip(archivos) {
   let offset = 0;
 
   for (const archivo of archivos) {
-    const data = Buffer.isBuffer(archivo.contenido) ? archivo.contenido : Buffer.from(archivo.contenido, 'utf8');
+    const data = Buffer.isBuffer(archivo.contenido)
+      ? archivo.contenido
+      : Buffer.from(archivo.contenido, 'utf8');
     const nombreBuf = Buffer.from(archivo.nombre, 'utf8');
     const comprimido = zlib.deflateRawSync(data);
     const crc = calcularCrc32(data);
@@ -45,7 +47,13 @@ function crearZip(archivos) {
     cabeceraLocal.writeUInt16LE(0, 28);
     nombreBuf.copy(cabeceraLocal, 30);
 
-    entradas.push({ nombreBuf, crc, cLen: comprimido.length, uLen: data.length, offset });
+    entradas.push({
+      nombreBuf,
+      crc,
+      cLen: comprimido.length,
+      uLen: data.length,
+      offset,
+    });
     partes.push(cabeceraLocal, comprimido);
     offset += cabeceraLocal.length + comprimido.length;
   }
@@ -191,7 +199,9 @@ function calcularAnchosColumnas(columnas, filas, anchoTotal) {
     return Math.max(max, 5);
   });
   const suma = pesos.reduce((a, b) => a + b, 0);
-  const anchos = pesos.map((p) => Math.max(40, Math.floor((p / suma) * anchoTotal)));
+  const anchos = pesos.map((p) =>
+    Math.max(40, Math.floor((p / suma) * anchoTotal))
+  );
   const diff = anchoTotal - anchos.reduce((a, b) => a + b, 0);
   anchos[anchos.length - 1] += diff;
   return anchos;
@@ -214,9 +224,13 @@ function generarPdf(titulo, columnas, filas) {
   const mins = String(ahora.getMinutes()).padStart(2, '0');
   const fechaGenerado = `${dia}/${mes}/${anio} ${horas}:${mins}`;
 
-  lineas.push(`BT /F2 15 Tf 36 575 Td (${escaparPdfTexto('SEGUR TRACK — SISTEMA DE SEGURIDAD')}) Tj ET`);
+  lineas.push(
+    `BT /F2 15 Tf 36 575 Td (${escaparPdfTexto('SEGUR TRACK — SISTEMA DE SEGURIDAD')}) Tj ET`
+  );
   lineas.push(`BT /F1 11 Tf 36 558 Td (${escaparPdfTexto(titulo)}) Tj ET`);
-  lineas.push(`BT /F1 8 Tf 36 544 Td (${escaparPdfTexto('Generado: ' + fechaGenerado)}) Tj ET`);
+  lineas.push(
+    `BT /F1 8 Tf 36 544 Td (${escaparPdfTexto('Generado: ' + fechaGenerado)}) Tj ET`
+  );
 
   const anchoTotal = 720;
   const anchos = calcularAnchosColumnas(columnas, filas, anchoTotal);
@@ -227,7 +241,9 @@ function generarPdf(titulo, columnas, filas) {
   for (let i = 0; i < columnas.length; i++) {
     const maxHeader = Math.max(3, Math.floor((anchos[i] - 6) / 5.2));
     const headerTxt = recortarTexto(columnas[i], maxHeader);
-    lineas.push(`BT /F2 8.5 Tf ${x} ${y} Td (${escaparPdfTexto(headerTxt)}) Tj ET`);
+    lineas.push(
+      `BT /F2 8.5 Tf ${x} ${y} Td (${escaparPdfTexto(headerTxt)}) Tj ET`
+    );
     x += anchos[i];
   }
 
@@ -241,7 +257,9 @@ function generarPdf(titulo, columnas, filas) {
     for (let i = 0; i < fila.length; i++) {
       const maxCelda = Math.max(3, Math.floor((anchos[i] - 6) / 4.7));
       const celdaTxt = recortarTexto(fila[i], maxCelda);
-      lineas.push(`BT /F1 7.5 Tf ${xFila} ${y} Td (${escaparPdfTexto(celdaTxt)}) Tj ET`);
+      lineas.push(
+        `BT /F1 7.5 Tf ${xFila} ${y} Td (${escaparPdfTexto(celdaTxt)}) Tj ET`
+      );
       xFila += anchos[i];
     }
     y -= 13;
@@ -253,10 +271,18 @@ function generarPdf(titulo, columnas, filas) {
   const objetos = [];
   objetos.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj');
   objetos.push('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj');
-  objetos.push('3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj');
-  objetos.push('4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj');
-  objetos.push('5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj');
-  objetos.push(`6 0 obj\n<< /Length ${streamBuf.length} >>\nstream\n${streamContent}\nendstream\nendobj`);
+  objetos.push(
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj'
+  );
+  objetos.push(
+    '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj'
+  );
+  objetos.push(
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj'
+  );
+  objetos.push(
+    `6 0 obj\n<< /Length ${streamBuf.length} >>\nstream\n${streamContent}\nendstream\nendobj`
+  );
 
   let offset = 9;
   const offsets = [];
@@ -302,7 +328,17 @@ async function obtenerDatosReporte(tipo) {
       WHERE s.eliminado = FALSE
       ORDER BY s.nombre ASC
     `);
-    const columnas = ['ID', 'Servicio', 'Cliente', 'Sede', 'Supervisor', 'Horario', 'Estado', 'Fecha Inicio', 'Fecha Fin'];
+    const columnas = [
+      'ID',
+      'Servicio',
+      'Cliente',
+      'Sede',
+      'Supervisor',
+      'Horario',
+      'Estado',
+      'Fecha Inicio',
+      'Fecha Fin',
+    ];
     const filas = rows.map((r) => [
       r.id,
       r.nombre,
@@ -325,13 +361,21 @@ async function obtenerDatosReporte(tipo) {
              t.hora_inicio || ' - ' || t.hora_fin AS horario,
              t.estado
       FROM turnos t
-      JOIN personal p ON t.personal_id = p.id
+      LEFT JOIN personal p ON t.personal_id = p.id
       JOIN servicios s ON t.servicio_id = s.id
       JOIN sedes se ON t.sede_id = se.id
       WHERE t.eliminado = FALSE
       ORDER BY t.fecha ASC, p.apellidos ASC
     `);
-    const columnas = ['ID', 'Fecha', 'Personal', 'Servicio', 'Sede', 'Horario', 'Estado'];
+    const columnas = [
+      'ID',
+      'Fecha',
+      'Personal',
+      'Servicio',
+      'Sede',
+      'Horario',
+      'Estado',
+    ];
     const filas = rows.map((r) => [
       r.id,
       formatearFechaDdMmYyyy(r.fecha),
@@ -359,7 +403,16 @@ async function obtenerDatosReporte(tipo) {
       WHERE i.eliminado = FALSE
       ORDER BY i.codigo ASC
     `);
-    const columnas = ['Código', 'Tipo', 'Servicio', 'Registrado Por', 'Prioridad', 'Estado', 'Fecha Registro', 'Descripción'];
+    const columnas = [
+      'Código',
+      'Tipo',
+      'Servicio',
+      'Registrado Por',
+      'Prioridad',
+      'Estado',
+      'Fecha Registro',
+      'Descripción',
+    ];
     const filas = rows.map((r) => [
       r.codigo,
       r.tipo,
@@ -367,29 +420,33 @@ async function obtenerDatosReporte(tipo) {
       r.registrado_por,
       r.prioridad,
       r.estado,
-      r.fecha_registro ? `${formatearFechaDdMmYyyy(r.fecha_registro.slice(0, 10))} ${r.fecha_registro.slice(11)}` : '—',
+      r.fecha_registro
+        ? `${formatearFechaDdMmYyyy(r.fecha_registro.slice(0, 10))} ${r.fecha_registro.slice(11)}`
+        : '—',
       r.descripcion,
     ]);
     return { titulo: 'Reporte de Incidencias Operativas', columnas, filas };
   }
 
   if (tipo === 'multicriterio') {
-    const { rows } = await pool.query(`
-      SELECT s.nombre AS servicio, em.puntaje_global, em.nivel,
-             TO_CHAR(em.fecha_evaluacion, 'YYYY-MM-DD') AS fecha
-      FROM evaluaciones_multicriterio em
-      JOIN servicios s ON em.servicio_id = s.id
-      WHERE em.eliminado = FALSE
-      ORDER BY s.nombre ASC
-    `);
-    const columnas = ['Servicio', 'Puntaje Global', 'Nivel de Atención', 'Fecha Evaluación'];
-    const filas = rows.map((r) => [
-      r.servicio,
-      r.puntaje_global,
-      r.nivel.toUpperCase(),
-      formatearFechaDdMmYyyy(r.fecha),
+    const data = await require('../services/operacion.service').resultado({
+      periodo: 'todos',
+    });
+    const columnas = [
+      'Servicio',
+      'Criticidad /100',
+      'Nivel',
+      ...data.criterios.map((c) => c.nombre + ' (%)'),
+    ];
+    const filas = data.tabla.map((s) => [
+      s.servicio,
+      s.puntaje === null ? 'No evaluable' : s.puntaje.toFixed(2),
+      s.nivel,
+      ...s.criterios.map((c) =>
+        c.tasa === null ? c.estado : c.tasa.toFixed(1)
+      ),
     ]);
-    return { titulo: 'Reporte de Evaluación Multicriterio (MCDA)', columnas, filas };
+    return { titulo: 'Evaluación multicriterio operativo-v2', columnas, filas };
   }
 
   const { rows } = await pool.query(`

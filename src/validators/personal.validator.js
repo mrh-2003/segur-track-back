@@ -11,7 +11,10 @@ const esquemaCrear = z.object({
   estado: z.enum(['activo', 'inactivo']).optional().default('activo'),
   sedeId: z.number().int().positive('Sede requerida'),
   usuarioId: z.number().int().positive().nullable().optional(),
-});
+  horarioInicio: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
+  horarioFin: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
+  diasLaborales: z.array(z.number().int().min(0).max(6)).min(1).optional(),
+}).refine((d) => Boolean(d.horarioInicio) === Boolean(d.horarioFin), { message: 'Complete ambas horas del horario laboral', path: ['horarioFin'] });
 
 const esquemaActualizar = esquemaCrear;
 

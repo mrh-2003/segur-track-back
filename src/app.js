@@ -1,23 +1,25 @@
 'use strict';
 
 const express = require('express');
-const cors    = require('cors');
-const helmet  = require('helmet');
-const morgan  = require('morgan');
-const swaggerUi       = require('swagger-ui-express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./docs/swagger');
-const env             = require('./config/env');
+const env = require('./config/env');
 
-const rutas         = require('./routes');
+const rutas = require('./routes');
 const { manejarErrores, noEncontrado } = require('./middlewares/errores');
 
 const app = express();
 
-app.use(helmet({
-  contentSecurityPolicy: false,
-}));
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+  })
+);
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 app.use(morgan('dev'));
 
 app.get('/api/docs.json', (req, res) => {

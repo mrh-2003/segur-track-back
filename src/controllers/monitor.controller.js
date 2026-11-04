@@ -44,8 +44,8 @@ const historialIndicadores = async (req, res, next) => {
 
 const indicadoresPorServicio = async (req, res, next) => {
   try {
-    const { periodo, clienteId, sedeId } = req.query;
-    const datos = await monitorService.indicadoresPorServicio({ periodo, clienteId, sedeId });
+    const { periodo, periodos, servicioId, clienteId, sedeId } = req.query;
+    const datos = await monitorService.indicadoresPorServicio({ periodo, periodos, servicioId, clienteId, sedeId });
     respuestaExito(res, datos);
   } catch (err) {
     next(err);

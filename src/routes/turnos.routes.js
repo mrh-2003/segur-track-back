@@ -4,21 +4,46 @@ const { Router } = require('express');
 const ctrl = require('../controllers/turnos.controller');
 const { validar } = require('../middlewares/validar');
 const { autorizar } = require('../middlewares/auth');
-const { esquemaCrear, esquemaActualizar, esquemaReasignar, esquemaCumplir } = require('../validators/turnos.validator');
+const {
+  esquemaCrear,
+  esquemaActualizar,
+  esquemaReasignar,
+  esquemaCumplir,
+} = require('../validators/turnos.validator');
 
 const router = Router();
+router.param('id', require('../middlewares/identificador'));
 
-router.get('/imagekit-auth',    ctrl.obtenerImagekitAuth);
-router.get('/semana',          ctrl.listarSemana);
-router.get('/resumen',         ctrl.resumen);
-router.get('/alertas',         ctrl.alertas);
-router.get('/sedes',           ctrl.listarSedes);
-router.post('/',               autorizar('administrador', 'jefe_operaciones', 'supervisor'), validar(esquemaCrear), ctrl.crear);
-router.put('/:id',             autorizar('administrador', 'jefe_operaciones', 'supervisor'), validar(esquemaActualizar), ctrl.actualizar);
+router.get('/imagekit-auth', ctrl.obtenerImagekitAuth);
+router.get('/semana', ctrl.listarSemana);
+router.get('/resumen', ctrl.resumen);
+router.get('/alertas', ctrl.alertas);
+router.get('/sedes', ctrl.listarSedes);
+router.post(
+  '/',
+  autorizar('administrador', 'jefe_operaciones', 'supervisor'),
+  validar(esquemaCrear),
+  ctrl.crear
+);
+router.put(
+  '/:id',
+  autorizar('administrador', 'jefe_operaciones', 'supervisor'),
+  validar(esquemaActualizar),
+  ctrl.actualizar
+);
 router.patch('/:id/confirmar', ctrl.confirmar);
-router.patch('/:id/cumplir',   validar(esquemaCumplir), ctrl.cumplir);
-router.patch('/:id/rechazar',  ctrl.rechazar);
-router.patch('/:id/reasignar', autorizar('administrador', 'jefe_operaciones', 'supervisor'), validar(esquemaReasignar), ctrl.reasignar);
-router.delete('/:id',          autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.eliminar);
+router.patch('/:id/cumplir', validar(esquemaCumplir), ctrl.cumplir);
+router.patch('/:id/rechazar', ctrl.rechazar);
+router.patch(
+  '/:id/reasignar',
+  autorizar('administrador', 'jefe_operaciones', 'supervisor'),
+  validar(esquemaReasignar),
+  ctrl.reasignar
+);
+router.delete(
+  '/:id',
+  autorizar('administrador', 'jefe_operaciones', 'supervisor'),
+  ctrl.eliminar
+);
 
 module.exports = router;

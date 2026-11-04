@@ -2,10 +2,15 @@
 
 const crypto = require('crypto');
 const env = require('../config/env');
-const turnosRepo   = require('../repositories/turnos.repository');
+const turnosRepo = require('../repositories/turnos.repository');
 const personalRepo = require('../repositories/personal.repository');
 const actividadRepo = require('../repositories/actividad.repository');
-const { ErrorNoEncontrado, ErrorConflicto, ErrorAutorizacion, ErrorValidacion } = require('../utils/errores');
+const {
+  ErrorNoEncontrado,
+  ErrorConflicto,
+  ErrorAutorizacion,
+  ErrorValidacion,
+} = require('../utils/errores');
 
 const listarPorSemana = async (filtros) => turnosRepo.listarPorSemana(filtros);
 
@@ -15,7 +20,9 @@ const obtenerAlertas = async () => turnosRepo.obtenerAlertas();
 
 const crear = async (datos, usuario) => {
   if (usuario.rol === 'operador') {
-    throw new ErrorAutorizacion('Los operadores no tienen permiso para asignar turnos');
+    throw new ErrorAutorizacion(
+      'Los operadores no tienen permiso para asignar turnos'
+    );
   }
 
   const p = await personalRepo.obtenerPorId(datos.personalId);
@@ -24,7 +31,9 @@ const crear = async (datos, usuario) => {
   }
 
   if (usuario.rol === 'supervisor' && p.cargo !== 'agente') {
-    throw new ErrorConflicto('Los supervisores solo pueden asignar turnos a operadores');
+    throw new ErrorConflicto(
+      'Los supervisores solo pueden asignar turnos a operadores'
+    );
   }
 
   const solapa = await turnosRepo.verificarSolapamiento(datos);
@@ -57,11 +66,17 @@ const actualizar = async (id, datos, usuario) => {
   }
 
   if (usuario.rol === 'supervisor' && p.cargo !== 'agente') {
-    throw new ErrorConflicto('Los supervisores solo pueden asignar turnos a operadores');
+    throw new ErrorConflicto(
+      'Los supervisores solo pueden asignar turnos a operadores'
+    );
   }
 
-  const solapa = await turnosRepo.verificarSolapamiento({ ...datos, excluirId: id });
-  if (solapa) throw new ErrorConflicto('El personal ya tiene un turno en ese horario');
+  const solapa = await turnosRepo.verificarSolapamiento({
+    ...datos,
+    excluirId: id,
+  });
+  if (solapa)
+    throw new ErrorConflicto('El personal ya tiene un turno en ese horario');
 
   const t = await turnosRepo.actualizar(id, datos);
   if (!t) throw new ErrorNoEncontrado('Turno no encontrado');
@@ -72,9 +87,11 @@ const confirmar = async (id, usuario) => {
   const t = await turnosRepo.obtenerPorId(id);
   if (!t) throw new ErrorNoEncontrado('Turno no encontrado');
 
-  const esAsignado = (t.personal_usuario_id && t.personal_usuario_id === usuario.id) ||
-                     (usuario.personalId && t.personal_id === usuario.personalId);
-  const esAdmin = usuario.rol === 'administrador' || usuario.rol === 'jefe_operaciones';
+  const esAsignado =
+    (t.personal_usuario_id && t.personal_usuario_id === usuario.id) ||
+    (usuario.personalId && t.personal_id === usuario.personalId);
+  const esAdmin =
+    usuario.rol === 'administrador' || usuario.rol === 'jefe_operaciones';
   const esSupervisor = usuario.rol === 'supervisor';
 
   if (!esAsignado && !esAdmin && !esSupervisor) {
@@ -96,22 +113,30 @@ const cumplir = async (id, evidencias, usuario) => {
   const t = await turnosRepo.obtenerPorId(id);
   if (!t) throw new ErrorNoEncontrado('Turno no encontrado');
 
-  const esAsignado = (t.personal_usuario_id && t.personal_usuario_id === usuario.id) ||
-                     (usuario.personalId && t.personal_id === usuario.personalId);
-  const esAdmin = usuario.rol === 'administrador' || usuario.rol === 'jefe_operaciones';
+  const esAsignado =
+    (t.personal_usuario_id && t.personal_usuario_id === usuario.id) ||
+    (usuario.personalId && t.personal_id === usuario.personalId);
+  const esAdmin =
+    usuario.rol === 'administrador' || usuario.rol === 'jefe_operaciones';
   const esSupervisor = usuario.rol === 'supervisor';
 
   if (!esAsignado && !esAdmin && !esSupervisor) {
     throw new ErrorAutorizacion('No está autorizado para culminar este turno');
   }
 
+  if (!t.ingreso_real)
+    throw new ErrorConflicto('Registre primero el ingreso real del turno');
   if (t.estado === 'sin_confirmar') {
-    throw new ErrorConflicto('El turno debe estar confirmado antes de ser culminado');
+    throw new ErrorConflicto(
+      'El turno debe estar confirmado antes de ser culminado'
+    );
   }
 
   const arregloEvidencias = Array.isArray(evidencias) ? evidencias : [];
   if (arregloEvidencias.length === 0) {
-    throw new ErrorValidacion('Debe adjuntar al menos una foto de evidencia para culminar el turno');
+    throw new ErrorValidacion(
+      'Debe adjuntar al menos una foto de evidencia para culminar el turno'
+    );
   }
 
   const actualizado = await turnosRepo.cumplir(id, arregloEvidencias);
@@ -128,7 +153,10 @@ const cumplir = async (id, evidencias, usuario) => {
 const obtenerImagekitAuth = () => {
   const token = crypto.randomBytes(16).toString('hex');
   const expire = Math.floor(Date.now() / 1000) + 3000;
-  const signature = crypto.createHmac('sha1', env.IMAGEKIT_PRIVATE_KEY).update(token + expire).digest('hex');
+  const signature = crypto
+    .createHmac('sha1', env.IMAGEKIT_PRIVATE_KEY)
+    .update(token + expire)
+    .digest('hex');
   return {
     token,
     expire,
@@ -141,9 +169,11 @@ const rechazar = async (id, motivo, usuario) => {
   const t = await turnosRepo.obtenerPorId(id);
   if (!t) throw new ErrorNoEncontrado('Turno no encontrado');
 
-  const esAsignado = (t.personal_usuario_id && t.personal_usuario_id === usuario.id) ||
-                     (usuario.personalId && t.personal_id === usuario.personalId);
-  const esAdmin = usuario.rol === 'administrador' || usuario.rol === 'jefe_operaciones';
+  const esAsignado =
+    (t.personal_usuario_id && t.personal_usuario_id === usuario.id) ||
+    (usuario.personalId && t.personal_id === usuario.personalId);
+  const esAdmin =
+    usuario.rol === 'administrador' || usuario.rol === 'jefe_operaciones';
   const esSupervisor = usuario.rol === 'supervisor';
 
   if (!esAsignado && !esAdmin && !esSupervisor) {
@@ -175,7 +205,9 @@ const reasignar = async (id, { personalId }, usuario) => {
   }
 
   if (usuario.rol === 'supervisor' && p.cargo !== 'agente') {
-    throw new ErrorConflicto('Los supervisores solo pueden asignar turnos a operadores');
+    throw new ErrorConflicto(
+      'Los supervisores solo pueden asignar turnos a operadores'
+    );
   }
 
   const solapa = await turnosRepo.verificarSolapamiento({
@@ -186,7 +218,9 @@ const reasignar = async (id, { personalId }, usuario) => {
     excluirId: id,
   });
   if (solapa) {
-    throw new ErrorConflicto('El nuevo personal ya tiene un turno en ese horario');
+    throw new ErrorConflicto(
+      'El nuevo personal ya tiene un turno en ese horario'
+    );
   }
 
   const actualizado = await turnosRepo.reasignar(id, {

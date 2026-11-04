@@ -14,7 +14,7 @@ const listarPorSemana = async ({ desde, hasta, sedeId }) => {
   }
 
   const { rows } = await pool.query(
-    `SELECT t.id, TO_CHAR(t.fecha, 'YYYY-MM-DD') AS fecha,
+    `SELECT t.*, TO_CHAR(t.fecha, 'YYYY-MM-DD') AS fecha,
             t.hora_inicio, t.hora_fin, t.estado, t.relevo_pendiente,
             t.personal_id, t.servicio_id, t.sede_id, t.creado_por, t.motivo_rechazo,
             COALESCE(t.evidencias, '[]'::jsonb) AS evidencias,
@@ -25,7 +25,7 @@ const listarPorSemana = async ({ desde, hasta, sedeId }) => {
             se.nombre AS sede,
             u.nombre AS creador_nombre
      FROM turnos t
-     JOIN personal p ON t.personal_id = p.id AND p.eliminado = FALSE
+     LEFT JOIN personal p ON t.personal_id = p.id AND p.eliminado = FALSE
      JOIN servicios s ON t.servicio_id = s.id AND s.eliminado = FALSE
      JOIN sedes se ON t.sede_id = se.id AND se.eliminado = FALSE
      LEFT JOIN usuarios u ON t.creado_por = u.id
@@ -67,7 +67,7 @@ const obtenerAlertas = async () => {
 
 const obtenerPorId = async (id) => {
   const { rows } = await pool.query(
-    `SELECT t.id, TO_CHAR(t.fecha, 'YYYY-MM-DD') AS fecha,
+    `SELECT t.*, TO_CHAR(t.fecha, 'YYYY-MM-DD') AS fecha,
             t.hora_inicio, t.hora_fin, t.estado, t.relevo_pendiente,
             t.personal_id, t.servicio_id, t.sede_id, t.creado_por, t.motivo_rechazo,
             COALESCE(t.evidencias, '[]'::jsonb) AS evidencias,
@@ -78,7 +78,7 @@ const obtenerPorId = async (id) => {
             se.nombre AS sede,
             u.nombre AS creador_nombre
      FROM turnos t
-     JOIN personal p ON t.personal_id = p.id AND p.eliminado = FALSE
+     LEFT JOIN personal p ON t.personal_id = p.id AND p.eliminado = FALSE
      JOIN servicios s ON t.servicio_id = s.id AND s.eliminado = FALSE
      JOIN sedes se ON t.sede_id = se.id AND se.eliminado = FALSE
      LEFT JOIN usuarios u ON t.creado_por = u.id
@@ -88,27 +88,49 @@ const obtenerPorId = async (id) => {
   return rows[0] || null;
 };
 
-const crear = async ({ personalId, servicioId, sedeId, fecha, horaInicio, horaFin, estado, creadoPor }) => {
+const crear = async ({
+  personalId,
+  servicioId,
+  sedeId,
+  fecha,
+  horaInicio,
+  horaFin,
+  estado,
+  creadoPor,
+}) => {
   const { rows } = await pool.query(
     `INSERT INTO turnos (personal_id, servicio_id, sede_id, fecha, hora_inicio, hora_fin, estado, relevo_pendiente, creado_por)
      VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, $8) RETURNING *`,
-    [personalId, servicioId, sedeId, fecha, horaInicio, horaFin, estado || 'sin_confirmar', creadoPor]
+    [
+      personalId,
+      servicioId,
+      sedeId,
+      fecha,
+      horaInicio,
+      horaFin,
+      estado || 'sin_confirmar',
+      creadoPor,
+    ]
   );
   return rows[0];
 };
 
-const verificarSolapamiento = async ({ personalId, fecha, horaInicio, horaFin, excluirId }) => {
+const verificarSolapamiento = async (datos) => {
+  const { inicio, fin } = require('../services/operacion.service').intervalo(
+    datos
+  );
   const { rows } = await pool.query(
-    `SELECT id FROM turnos
-     WHERE personal_id = $1 AND fecha = $2 AND eliminado = FALSE
-       AND ($3::time, $4::time) OVERLAPS (hora_inicio, hora_fin)
-       ${excluirId ? `AND id != ${excluirId}` : ''}`,
-    [personalId, fecha, horaInicio, horaFin]
+    `SELECT id FROM vw_operacion_turnos WHERE personal_id=$1 AND inicio_programado<$3 AND fin_programado>$2 AND ($4::int IS NULL OR id<>$4)
+    UNION ALL SELECT id::int FROM personal_ausencias WHERE personal_id=$1 AND NOT eliminado AND inicio<$3 AND fin>$2`,
+    [datos.personalId, inicio, fin, datos.excluirId || null]
   );
   return rows.length > 0;
 };
 
-const actualizar = async (id, { personalId, servicioId, sedeId, fecha, horaInicio, horaFin, estado }) => {
+const actualizar = async (
+  id,
+  { personalId, servicioId, sedeId, fecha, horaInicio, horaFin, estado }
+) => {
   const { rows } = await pool.query(
     `UPDATE turnos
      SET personal_id = $1, servicio_id = $2, sede_id = $3, fecha = $4,
@@ -132,7 +154,7 @@ const confirmar = async (id) => {
 const cumplir = async (id, evidencias) => {
   const { rows } = await pool.query(
     `UPDATE turnos
-     SET estado = 'cumplido', evidencias = $1::jsonb, relevo_pendiente = FALSE, actualizado_en = NOW()
+     SET estado = 'cumplido', evidencias = $1::jsonb, evidencias_registradas=jsonb_array_length($1::jsonb), evidencia_registro=NOW(), salida_real=COALESCE(salida_real,NOW()), relevo_pendiente = FALSE, actualizado_en = NOW()
      WHERE id = $2 AND eliminado = FALSE RETURNING *`,
     [JSON.stringify(evidencias), id]
   );

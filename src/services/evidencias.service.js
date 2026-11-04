@@ -43,19 +43,40 @@ const crear = async (datos, usuario) => {
     personalId = servicio.supervisor_id;
   }
   if (!personalId) {
-    const { filas } = await serviciosRepo.listarPersonalAsignado({ servicioId: datos.servicioId, limite: 1 });
+    const { filas } = await serviciosRepo.listarPersonalAsignado({
+      servicioId: datos.servicioId,
+      limite: 1,
+    });
     if (filas && filas.length > 0) {
       personalId = filas[0].personal_id;
     }
   }
 
   if (!personalId) {
-    throw new ErrorValidacion('Debe especificarse el personal operativo responsable', [
-      { campo: 'personalId', mensaje: 'Personal operativo requerido' },
-    ]);
+    throw new ErrorValidacion(
+      'Debe especificarse el personal operativo responsable',
+      [{ campo: 'personalId', mensaje: 'Personal operativo requerido' }]
+    );
   }
 
+  if (datos.turnoId) {
+    const turno = (
+      await require('../config/db').query(
+        'SELECT servicio_id,personal_id FROM turnos WHERE id=$1 AND NOT eliminado',
+        [datos.turnoId]
+      )
+    ).rows[0];
+    if (
+      !turno ||
+      turno.servicio_id !== datos.servicioId ||
+      turno.personal_id !== personalId
+    )
+      throw new ErrorValidacion(
+        'La evidencia debe corresponder al servicio y al personal del turno'
+      );
+  }
   const creada = await evidenciasRepo.crear({
+    turnoId: datos.turnoId,
     servicioId: datos.servicioId,
     protocoloId: datos.protocoloId,
     personalId,

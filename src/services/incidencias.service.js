@@ -2,12 +2,13 @@
 
 const pool = require('../config/db');
 const incidenciasRepo = require('../repositories/incidencias.repository');
-const actividadRepo   = require('../repositories/actividad.repository');
+const actividadRepo = require('../repositories/actividad.repository');
 const { ErrorNoEncontrado, ErrorConflicto } = require('../utils/errores');
 
 const listar = async (filtros) => incidenciasRepo.listar(filtros);
 
-const obtenerResumen = async () => incidenciasRepo.obtenerResumen();
+const obtenerResumen = async (filtros) =>
+  incidenciasRepo.obtenerResumen(filtros);
 
 const obtenerRecientes = async () => incidenciasRepo.obtenerRecientes(5);
 
@@ -66,7 +67,9 @@ const cambiarEstado = async (id, estado, observacion, usuarioSolicitante) => {
   const actual = await incidenciasRepo.obtenerPorId(id);
   if (!actual) throw new ErrorNoEncontrado('Incidencia no encontrada');
   if (estado === 'cerrada' && !actual.fecha_atencion) {
-    throw new ErrorConflicto('No se puede cerrar una incidencia sin haber sido atendida previamente');
+    throw new ErrorConflicto(
+      'No se puede cerrar una incidencia sin haber sido atendida previamente'
+    );
   }
   const i = await incidenciasRepo.cambiarEstado(id, estado, observacion);
   await actividadRepo.registrar({

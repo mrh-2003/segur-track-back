@@ -2,7 +2,15 @@
 
 const pool = require('../config/db');
 
-const listar = async ({ servicioId, protocoloId, personalId, estadoRevision, q, limite = 50, offset = 0 } = {}) => {
+const listar = async ({
+  servicioId,
+  protocoloId,
+  personalId,
+  estadoRevision,
+  q,
+  limite = 50,
+  offset = 0,
+} = {}) => {
   const condiciones = ['e.eliminado = FALSE'];
   const params = [];
   let idx = 1;
@@ -39,7 +47,9 @@ const listar = async ({ servicioId, protocoloId, personalId, estadoRevision, q, 
 
   const where = condiciones.join(' AND ');
 
-  const { rows: [{ total }] } = await pool.query(
+  const {
+    rows: [{ total }],
+  } = await pool.query(
     `SELECT COUNT(*) AS total FROM evidencias_servicio e WHERE ${where}`,
     params
   );
@@ -88,12 +98,28 @@ const obtenerPorId = async (id) => {
   return rows[0] || null;
 };
 
-const crear = async ({ servicioId, protocoloId, personalId, titulo, descripcion, archivoUrl }) => {
+const crear = async ({
+  servicioId,
+  protocoloId,
+  personalId,
+  titulo,
+  descripcion,
+  archivoUrl,
+  turnoId,
+}) => {
   const { rows } = await pool.query(
-    `INSERT INTO evidencias_servicio (servicio_id, protocolo_id, personal_id, titulo, descripcion, archivo_url)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO evidencias_servicio (servicio_id, protocolo_id, personal_id, titulo, descripcion, archivo_url, turno_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [servicioId, protocoloId || null, personalId, titulo.trim(), descripcion ? descripcion.trim() : null, archivoUrl || null]
+    [
+      servicioId,
+      protocoloId || null,
+      personalId,
+      titulo.trim(),
+      descripcion ? descripcion.trim() : null,
+      archivoUrl || null,
+      turnoId || null,
+    ]
   );
   return rows[0];
 };

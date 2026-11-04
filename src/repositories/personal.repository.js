@@ -27,7 +27,7 @@ const listar = async ({ limite, offset, q, estado }) => {
   );
 
   const { rows } = await pool.query(
-    `SELECT p.id, p.nombres, p.apellidos, p.documento, p.cargo, p.estado,
+    `SELECT p.id, p.nombres, p.apellidos, p.documento, p.cargo, p.estado,p.horario_inicio,p.horario_fin,p.dias_laborales,
             p.correo, p.sede_id, p.usuario_id,
             s.nombre AS sede,
             (
@@ -74,7 +74,7 @@ const obtenerPorId = async (id) => {
   return rows[0] || null;
 };
 
-const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'activo', sedeId, usuarioId }) => {
+const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'activo', sedeId, usuarioId, horarioInicio, horarioFin, diasLaborales }) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -120,6 +120,7 @@ const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'a
       [nombres.trim(), apellidos.trim(), documento.trim(), correoNormalizado, cargo, estado, sedeId, uId]
     );
 
+    await client.query('UPDATE personal SET horario_inicio=$2,horario_fin=$3,dias_laborales=$4 WHERE id=$1', [nuevoP.id, horarioInicio || null, horarioFin || null, diasLaborales || [0,1,2,3,4,5,6]]);
     await client.query('COMMIT');
     return nuevoP;
   } catch (err) {
@@ -130,7 +131,7 @@ const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'a
   }
 };
 
-const actualizar = async (id, { nombres, apellidos, documento, correo, cargo, estado, sedeId }) => {
+const actualizar = async (id, { nombres, apellidos, documento, correo, cargo, estado, sedeId, horarioInicio, horarioFin, diasLaborales }) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -145,6 +146,7 @@ const actualizar = async (id, { nombres, apellidos, documento, correo, cargo, es
       [nombres.trim(), apellidos.trim(), documento.trim(), correoNormalizado, cargo, estado, sedeId, id]
     );
 
+    if(p) await client.query('UPDATE personal SET horario_inicio=$2,horario_fin=$3,dias_laborales=$4 WHERE id=$1', [id, horarioInicio || null, horarioFin || null, diasLaborales || [0,1,2,3,4,5,6]]);
     if (p && p.usuario_id) {
       const activoBool = estado === 'activo';
       const rolUsuario = cargo === 'jefe_operaciones'

@@ -3,10 +3,15 @@
 const { z } = require('zod');
 
 const esquemaCrear = z.object({
+  turnoId: z.coerce.number().int().positive().optional().nullable(),
   servicioId: z.coerce.number().int().positive('Servicio requerido'),
   protocoloId: z.coerce.number().int().positive().optional().nullable(),
   personalId: z.coerce.number().int().positive().optional().nullable(),
-  titulo: z.string().trim().min(3, 'El título debe tener al menos 3 caracteres').max(150, 'Máximo 150 caracteres'),
+  titulo: z
+    .string()
+    .trim()
+    .min(3, 'El título debe tener al menos 3 caracteres')
+    .max(150, 'Máximo 150 caracteres'),
   descripcion: z.string().trim().optional().nullable(),
   archivoUrl: z.string().trim().optional().nullable(),
 });
