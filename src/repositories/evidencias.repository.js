@@ -127,7 +127,7 @@ const crear = async ({
 const revisar = async (id, { estadoRevision, observacion, revisadoPor }) => {
   const { rows } = await pool.query(
     `UPDATE evidencias_servicio
-     SET estado_revision = $1, observacion = $2, revisado_por = $3, fecha_revision = NOW(), actualizado_en = NOW()
+     SET conforme = CASE WHEN $1='aprobada' THEN TRUE WHEN $1='observada' THEN FALSE ELSE NULL END, estado_revision = $1, observacion = $2, revisado_por = $3, fecha_revision = NOW(), actualizado_en = NOW()
      WHERE id = $4 AND eliminado = FALSE
      RETURNING *`,
     [estadoRevision, observacion ? observacion.trim() : null, revisadoPor, id]

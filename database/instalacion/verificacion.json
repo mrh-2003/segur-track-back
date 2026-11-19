@@ -1,8 +1,13 @@
 {
   "verificado": true,
-  "tablas": 43,
-  "filas": 12213,
-  "cuentas": 6,
-  "servicios": 12,
+  "generadoresProbados": true,
+  "complementoIdempotente": true,
+  "rutaModular": true,
+  "fecha": "2026-11-18T23:16:27.781Z",
+  "version": "operativo-v4",
+  "tablas": 49,
+  "filas": 25964,
+  "cuentas": 15,
+  "servicios": 13,
   "criteriosPorServicio": 5
 }

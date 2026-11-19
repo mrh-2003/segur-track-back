@@ -31,6 +31,7 @@ router.use('/servicios', autenticar, serviciosRutas);
 router.use('/incidencias', autenticar, incidenciasRutas);
 router.use('/bi', autenticar, biRutas);
 router.use('/multicriterio', autenticar, multicriterioRutas);
+router.use('/datos-kpi', autenticar, require('./datos-kpi.routes'));
 router.use('/reportes', autenticar, reportesRutas);
 router.use('/sedes', autenticar, sedesRutas);
 router.use('/clientes', autenticar, clientesRutas);

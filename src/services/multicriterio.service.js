@@ -12,7 +12,7 @@ const actualizarPesos = async (criterios) => {
   if (
     criterios.length !== 5 ||
     new Set(criterios.map((c) => c.id)).size !== 5 ||
-    criterios.some((c) => !/^C[1-5]$/.test(c.id)) ||
+    criterios.some((c) => !/^C0[1-5]$/.test(c.id)) ||
     Math.abs(criterios.reduce((s, c) => s + c.peso, 0) - 1) > 0.000001
   )
     throw new ErrorValidacion(

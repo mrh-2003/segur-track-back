@@ -1,4 +1,10 @@
+-- Tras las migraciones, completar los flujos KPI de una base demo con npm run db:demo:kpis.
+-- Ejemplos relativos al día actual de Lima. Revisión: 18/11/2026.
+SET TIME ZONE 'America/Lima';
 TRUNCATE TABLE
+  verificaciones_consignas,
+  rondas,
+  consignas,
   evidencias_servicio,
   servicio_requerimientos,
   servicio_protocolos,
@@ -191,11 +197,12 @@ INSERT INTO incidencias (codigo, tipo_incidencia_id, servicio_id, personal_id, d
 SELECT setval('seq_incidencias', 10);
 
 INSERT INTO criterios_mcda (id, codigo, nombre, descripcion, peso, activo) VALUES
-  (1, 'C01', 'Cantidad de evidencias registradas',        'Volumen y cumplimiento de evidencias cargadas',            0.250, TRUE),
-  (2, 'C02', 'Incidencias registradas',                  'Frecuencia y criticidad de incidencias ocurridas',         0.250, TRUE),
-  (3, 'C03', 'Protocolos realizados',                    'Protocolos y actividades ejecutadas durante el servicio', 0.250, TRUE),
-  (4, 'C04', 'Puntualidad y duración estimada del turno', 'Cumplimiento de horario y duración prevista',             0.250, TRUE);
-SELECT setval('criterios_mcda_id_seq', 4);
+  (1, 'C01', 'Puntualidad y asistencia',                'Presencia a tiempo y cobertura de turnos programados',                   0.200, TRUE),
+  (2, 'C02', 'Cumplimiento de protocolos y consignas',  'Ejecución conforme de protocolos de seguridad y consignas del servicio', 0.200, TRUE),
+  (3, 'C03', 'Cumplimiento de actividades y rondas',    'Realización de actividades planificadas y rondas de vigilancia',         0.200, TRUE),
+  (4, 'C04', 'Cumplimiento de reportes operativos',     'Entrega oportuna y dentro del plazo de reportes operativos del turno',   0.200, TRUE),
+  (5, 'C05', 'Gestión de incidencias',                  'Resolución y atención dentro del plazo de las incidencias registradas',  0.200, TRUE);
+SELECT setval('criterios_mcda_id_seq', 5);
 
 INSERT INTO evaluaciones_multicriterio (id, servicio_id, fecha_evaluacion, puntaje_global, nivel) VALUES
   (1, 7,  NOW() - INTERVAL '1 hour', 36.00, 'alta'),
@@ -207,12 +214,12 @@ INSERT INTO evaluaciones_multicriterio (id, servicio_id, fecha_evaluacion, punta
 SELECT setval('evaluaciones_multicriterio_id_seq', 6);
 
 INSERT INTO evaluacion_criterios (evaluacion_id, criterio_id, puntaje, influye) VALUES
-  (1,1,35.00,TRUE), (1,2,10.00,TRUE), (1,3,0.00,TRUE),  (1,4,100.00,FALSE),
-  (2,1,35.00,TRUE), (2,2,100.00,FALSE),(2,3,0.00,TRUE),  (2,4,80.00,FALSE),
-  (3,1,20.00,TRUE), (3,2,100.00,FALSE),(3,3,0.00,TRUE),  (3,4,100.00,FALSE),
-  (4,1,80.00,FALSE),(4,2,100.00,FALSE),(4,3,90.00,FALSE),(4,4,0.00,TRUE),
-  (5,1,100.00,FALSE),(5,2,100.00,FALSE),(5,3,100.00,FALSE),(5,4,0.00,TRUE),
-  (6,1,80.00,FALSE),(6,2,80.00,FALSE),(6,3,90.00,FALSE),(6,4,75.00,FALSE);
+  (1,1,40.00,TRUE),  (1,2,25.00,TRUE),  (1,3,30.00,TRUE),  (1,4,50.00,TRUE),  (1,5,35.00,TRUE),
+  (2,1,55.00,FALSE), (2,2,60.00,FALSE), (2,3,45.00,TRUE),  (2,4,55.00,FALSE), (2,5,55.00,FALSE),
+  (3,1,50.00,TRUE),  (3,2,65.00,FALSE), (3,3,40.00,TRUE),  (3,4,70.00,FALSE), (3,5,50.00,TRUE),
+  (4,1,80.00,FALSE), (4,2,75.00,FALSE), (4,3,70.00,FALSE), (4,4,55.00,FALSE), (4,5,60.00,FALSE),
+  (5,1,90.00,FALSE), (5,2,80.00,FALSE), (5,3,80.00,FALSE), (5,4,70.00,FALSE), (5,5,55.00,FALSE),
+  (6,1,85.00,FALSE), (6,2,80.00,FALSE), (6,3,85.00,FALSE), (6,4,78.00,FALSE), (6,5,77.00,FALSE);
 
 INSERT INTO reportes_generados (tipo, categoria, formato, estado, generado_por, creado_en) VALUES
   ('servicios',     'operativos',    'xlsx', 'completado', 1, NOW() - INTERVAL '2 days'),
@@ -264,3 +271,152 @@ INSERT INTO evidencias_servicio (servicio_id, protocolo_id, personal_id, titulo,
   (6, 2, 4, 'Ronda perimetral este', 'Puerta posterior de emergencia encontrada asegurada correctamente', 'https://ik.imagekit.io/segurtrack/evidencias/ronda_este.jpg', 'aprobada', 'Conforme sin novedades', 2, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '3 hours'),
   (10, 3, 3, 'Falsa alarma sensor de movimiento', 'Causada por ráfaga de viento en almacén 3. Se descartó intrusión.', 'https://ik.imagekit.io/segurtrack/evidencias/alarma_sensor.jpg', 'observada', 'Se requiere reubicar sensor hacia zona interna', 2, NOW() - INTERVAL '1 hour', NOW() - INTERVAL '2 hours'),
   (8, 2, 5, 'Ronda sector estacionamientos', 'Inspección de vehículos estacionados y luminarias', 'https://ik.imagekit.io/segurtrack/evidencias/estacionamiento.jpg', 'pendiente', NULL, NULL, NULL, NOW() - INTERVAL '30 minutes');
+
+INSERT INTO consignas (id, servicio_id, descripcion, activo) VALUES
+  (1,  6,  'Verificar identificación de visitantes antes de permitir el acceso al perímetro norte', TRUE),
+  (2,  6,  'Registrar placas de vehículos de carga que ingresen entre las 06:00 y las 14:00',       TRUE),
+  (3,  6,  'Comunicar novedades a central de seguridad cada 30 minutos durante el turno',            TRUE),
+  (4,  7,  'Realizar patrullaje perimetral exterior completo cada 60 minutos',                       TRUE),
+  (5,  7,  'Verificar estado de cerraduras de accesos secundarios al inicio y al fin del turno',    TRUE),
+  (6,  7,  'Reportar cualquier presencia no autorizada en el área exterior de inmediato',            TRUE),
+  (7,  8,  'Controlar acceso vehicular con bitácora física y registro fotográfico de placas',        TRUE),
+  (8,  8,  'Verificar que todo personal de planta porte credencial visible durante su jornada',     TRUE),
+  (9,  9,  'Efectuar ronda nocturna perimetral completa a las 22:30, 00:30 y 02:30',                TRUE),
+  (10, 9,  'Asegurar cierre de portones de servicio antes del inicio de la ronda nocturna',          TRUE),
+  (11, 10, 'Registrar el ingreso y salida de visitantes en el sistema de recepción con DNI',         TRUE),
+  (12, 10, 'Notificar al área de destino la llegada de cada visitante antes de autorizar el pase',   TRUE);
+SELECT setval('consignas_id_seq', 12);
+
+INSERT INTO verificaciones_consignas (turno_id, consigna_id, cumplida, observacion, verificado_por)
+SELECT
+  t.id,
+  c.id,
+  CASE WHEN c.id IN (1,2,4,7,9,11) THEN TRUE ELSE FALSE END,
+  CASE WHEN c.id NOT IN (1,2,4,7,9,11) THEN 'No se pudo verificar durante el turno' ELSE NULL END,
+  1
+FROM turnos t
+JOIN consignas c ON c.servicio_id = t.servicio_id AND c.eliminado = FALSE
+WHERE t.eliminado = FALSE
+  AND t.estado IN ('cumplido','confirmado')
+  AND t.fecha >= CURRENT_DATE - INTERVAL '7 days'
+  AND t.fecha <= CURRENT_DATE;
+
+UPDATE turnos SET rondas_requeridas = 2, rondas_completadas = 2
+WHERE servicio_id = 6 AND estado = 'cumplido' AND eliminado = FALSE
+  AND fecha >= CURRENT_DATE - INTERVAL '7 days';
+
+UPDATE turnos SET rondas_requeridas = 2, rondas_completadas = 1
+WHERE servicio_id = 7 AND estado = 'cumplido' AND eliminado = FALSE
+  AND fecha >= CURRENT_DATE - INTERVAL '7 days';
+
+UPDATE turnos SET rondas_requeridas = 2, rondas_completadas = 2
+WHERE servicio_id = 9 AND estado IN ('cumplido','confirmado') AND eliminado = FALSE
+  AND fecha >= CURRENT_DATE - INTERVAL '7 days';
+
+UPDATE turnos SET rondas_requeridas = 2, rondas_completadas = 0
+WHERE servicio_id = 8 AND estado = 'cumplido' AND eliminado = FALSE
+  AND fecha >= CURRENT_DATE - INTERVAL '7 days';
+
+WITH turno_actual AS (
+  SELECT t.id AS tid, t.servicio_id AS sid
+  FROM turnos t
+  WHERE t.eliminado = FALSE
+    AND t.servicio_id IN (6,7,9)
+    AND t.fecha = CURRENT_DATE
+  LIMIT 3
+)
+INSERT INTO rondas (turno_id, servicio_id, fecha_programada, fecha_completada, ruta, observaciones, estado, creado_por)
+SELECT
+  ta.tid,
+  ta.sid,
+  NOW() - INTERVAL '3 hours',
+  NOW() - INTERVAL '2 hours 45 minutes',
+  CASE ta.sid
+    WHEN 6 THEN 'Acceso Norte → Puerta lateral → Estacionamiento → Retorno'
+    WHEN 7 THEN 'Exterior Oeste → Exterior Sur → Exterior Este → Retorno'
+    WHEN 9 THEN 'Portón principal → Área de carga → Almacenes → Retorno'
+  END,
+  'Sin novedades durante el recorrido',
+  'completada',
+  1
+FROM turno_actual ta
+UNION ALL
+SELECT
+  ta.tid,
+  ta.sid,
+  NOW() - INTERVAL '1 hour',
+  NOW() - INTERVAL '45 minutes',
+  CASE ta.sid
+    WHEN 6 THEN 'Acceso Norte → Puerta lateral → Estacionamiento → Retorno'
+    WHEN 7 THEN 'Exterior Oeste → Exterior Sur → Exterior Este → Retorno'
+    WHEN 9 THEN 'Portón principal → Área de carga → Almacenes → Retorno'
+  END,
+  'Sin novedades durante el recorrido',
+  'completada',
+  1
+FROM turno_actual ta;
+
+WITH turno_serv8 AS (
+  SELECT t.id AS tid
+  FROM turnos t
+  WHERE t.eliminado = FALSE AND t.servicio_id = 8 AND t.fecha = CURRENT_DATE
+  LIMIT 1
+)
+INSERT INTO rondas (turno_id, servicio_id, fecha_programada, fecha_completada, ruta, observaciones, estado, creado_por)
+SELECT
+  ts.tid,
+  8,
+  NOW() - INTERVAL '2 hours',
+  NULL::TIMESTAMPTZ,
+  'Estacionamiento → Acceso vehículos → Planta → Retorno',
+  NULL,
+  'programada',
+  1
+FROM turno_serv8 ts
+UNION ALL
+SELECT
+  ts.tid,
+  8,
+  NOW() + INTERVAL '1 hour',
+  NULL::TIMESTAMPTZ,
+  'Estacionamiento → Acceso vehículos → Planta → Retorno',
+  NULL,
+  'programada',
+  1
+FROM turno_serv8 ts;
+
+WITH turnos_hist AS (
+  SELECT t.id AS tid, t.servicio_id AS sid,
+         ROW_NUMBER() OVER (PARTITION BY t.servicio_id ORDER BY t.fecha DESC) AS rn
+  FROM turnos t
+  WHERE t.eliminado = FALSE
+    AND t.servicio_id IN (6,7,9)
+    AND t.fecha BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE - INTERVAL '1 day'
+    AND t.estado = 'cumplido'
+)
+INSERT INTO rondas (turno_id, servicio_id, fecha_programada, fecha_completada, ruta, observaciones, estado, creado_por)
+SELECT
+  th.tid,
+  th.sid,
+  (t.fecha + INTERVAL '3 hours')::TIMESTAMPTZ,
+  (t.fecha + INTERVAL '3 hours 20 minutes')::TIMESTAMPTZ,
+  'Ruta estándar del servicio',
+  'Ronda completada sin novedades',
+  'completada',
+  1
+FROM turnos_hist th
+JOIN turnos t ON t.id = th.tid
+WHERE th.rn <= 3
+UNION ALL
+SELECT
+  th.tid,
+  th.sid,
+  (t.fecha + INTERVAL '6 hours')::TIMESTAMPTZ,
+  CASE WHEN th.sid = 7 THEN NULL ELSE (t.fecha + INTERVAL '6 hours 25 minutes')::TIMESTAMPTZ END,
+  'Ruta estándar del servicio',
+  CASE WHEN th.sid = 7 THEN NULL ELSE 'Ronda completada sin novedades' END,
+  CASE WHEN th.sid = 7 THEN 'omitida' ELSE 'completada' END,
+  1
+FROM turnos_hist th
+JOIN turnos t ON t.id = th.tid
+WHERE th.rn <= 3;

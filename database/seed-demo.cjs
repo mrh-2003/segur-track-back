@@ -11,11 +11,11 @@ const {
 } = require('../src/services/evaluacion-operativa');
 
 const DEFINICIONES = [
-  ['C1', 'Cumplimiento de turnos del personal', 0.2, 10],
-  ['C2', 'Puntualidad del personal', 0.2, 20],
-  ['C3', 'Cobertura de turnos del personal', 0.2, 10],
-  ['C4', 'Cumplimiento del registro de evidencias', 0.2, 10],
-  ['C5', 'Atención oportuna de incidencias', 0.2, 30],
+ ['C01','Puntualidad y asistencia',.2,20],
+ ['C02','Cumplimiento de protocolos y consignas',.2,20],
+ ['C03','Cumplimiento de actividades y rondas',.2,20],
+ ['C04','Cumplimiento de reportes operativos',.2,20],
+ ['C05','Gestión de incidencias',.2,20],
 ];
 const MS_DIA = 86400000;
 const azar = (a, b, c = 1) => {
@@ -867,6 +867,7 @@ async function generar() {
       [hoy]
     );
     await c.query('SELECT bi.refrescar()');
+    await require('./datos-kpi-demo.cjs')(c);
     const cargar = async () => ({
       servicios: (
         await c.query(
@@ -875,13 +876,17 @@ async function generar() {
       ).rows,
       turnos: (
         await c.query(
-          "SELECT t.*,TO_CHAR(fecha,'YYYY-MM-DD') AS dia FROM vw_operacion_turnos t"
+          "SELECT t.*,b.plan_kpi_validado,TO_CHAR(t.fecha,'YYYY-MM-DD') AS dia FROM vw_operacion_turnos t JOIN turnos b ON b.id=t.id"
         )
       ).rows,
       incidencias: (await c.query('SELECT * FROM incidencias')).rows,
       criterios: (
         await c.query('SELECT * FROM modelo_operativo ORDER BY codigo')
       ).rows,
+      obligaciones:(await c.query('SELECT * FROM obligaciones_operativas WHERE NOT eliminado')).rows,
+      rondas:(await c.query('SELECT * FROM rondas WHERE NOT eliminado')).rows,
+      verificacionesConsignas:(await c.query('SELECT * FROM verificaciones_consignas')).rows,
+      evidenciasServicio:(await c.query('SELECT * FROM evidencias_servicio WHERE NOT eliminado')).rows,
       corte,
     });
     const fuentes = await cargar();

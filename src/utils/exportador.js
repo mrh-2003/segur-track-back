@@ -446,7 +446,7 @@ async function obtenerDatosReporte(tipo) {
         c.tasa === null ? c.estado : c.tasa.toFixed(1)
       ),
     ]);
-    return { titulo: 'Evaluación multicriterio operativo-v2', columnas, filas };
+    return { titulo: 'Evaluación multicriterio operativo-v4', columnas, filas };
   }
 
   const { rows } = await pool.query(`

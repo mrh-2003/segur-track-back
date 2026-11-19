@@ -8,7 +8,7 @@ const env = require('../src/config/env');
 const pool = require('../src/config/db');
 const bin = process.env.PG_DUMP || 'C:/Program Files/PostgreSQL/18/bin/pg_dump.exe';
 const carpeta = path.join(__dirname, 'instalacion');
-const limpiar = (s) => s.replace(/^\\(?:un)?restrict\b.*\r?\n/gm, '').replace(/^-- PostgreSQL database dump complete[\s\S]*$/, '-- Fin de la exportación.\n');
+const limpiar = (s) => s.replace(/^\\(?:un)?restrict\b.*\r?\n/gm, '').replace(/^ALTER TABLE ONLY .+ ALTER COLUMN .+ SET \(pg_attver=\d+\);\r?\n/gm, '').replace(/^-- PostgreSQL database dump complete[\s\S]*$/, '-- Fin de la exportación.\n');
 
 (async () => {
   const c = await pool.connect();

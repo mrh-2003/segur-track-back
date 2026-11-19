@@ -38,7 +38,7 @@ const listar = async ({ limite, offset, q, tipoId, estado, servicioId }) => {
   );
 
   const { rows } = await pool.query(
-    `SELECT i.responsable_id, i.sla_min, i.turno_id, responsable.nombres||' '||responsable.apellidos AS responsable, i.id, i.codigo, i.prioridad, i.estado, i.fecha_registro, i.fecha_atencion, i.fecha_cierre, i.descripcion, i.observacion,
+    `SELECT i.responsable_id, i.sla_resolucion_min, i.sla_min, i.turno_id, responsable.nombres||' '||responsable.apellidos AS responsable, i.id, i.codigo, i.prioridad, i.estado, i.fecha_registro, i.fecha_atencion, i.fecha_cierre, i.descripcion, i.observacion,
             i.tipo_incidencia_id, i.servicio_id, i.personal_id, i.registrado_por,
             ti.nombre AS tipo,
             s.nombre  AS servicio,
@@ -170,15 +170,16 @@ const cambiarEstado = async (id, estado, observacion) => {
   let idx = 2;
 
   if (fechaAtencion) {
-    sql += `, fecha_atencion = $${idx}`;
+    sql += `, fecha_atencion = COALESCE(fecha_atencion, ${idx})`;
     valores.push(ahora);
     idx++;
   }
   if (fechaCierre) {
-    sql += `, fecha_cierre = $${idx}`;
+    sql += `, fecha_cierre = COALESCE(fecha_cierre, ${idx})`;
     valores.push(ahora);
     idx++;
   }
+  if (estado !== 'cerrada') sql += ', fecha_cierre = NULL';
   if (observacion !== undefined && observacion !== null) {
     sql += `, observacion = $${idx}`;
     valores.push(observacion.trim());

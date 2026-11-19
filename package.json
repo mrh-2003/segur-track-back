@@ -10,7 +10,9 @@
     "test": "node --test test/evaluacion.test.js test/horario.test.js",
     "test:integration": "node test/integracion.cjs",
     "db:migrate": "node database/migrar.cjs",
-    "db:demo": "node database/seed-demo.cjs"
+    "db:demo": "node database/seed-demo.cjs",
+    "test:kpis:integration": "node test/kpis-integracion.cjs",
+    "db:demo:kpis": "node database/completar-demo-kpis.cjs"
   },
   "keywords": [],
   "author": "",

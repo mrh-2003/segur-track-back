@@ -8,11 +8,11 @@ const esquemaPesos = z.object({
   criterios: z
     .array(
       z.object({
-        id: z.string().regex(/^C[1-5]$/),
+        id: z.string().regex(/^C0[1-5]$/),
         umbral: z.number().min(1).max(100).optional(),
         peso: z.number().min(0).max(1),
       })
-    )
+    ).length(5)
     .refine(
       (arr) => Math.abs(arr.reduce((s, c) => s + c.peso, 0) - 1) < 0.001,
       { message: 'La suma de pesos debe ser 1' }

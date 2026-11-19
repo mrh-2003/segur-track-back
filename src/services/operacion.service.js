@@ -77,7 +77,7 @@ const crearTurno = async (d, u) =>
     ).rows[0];
     if (!s) throw new ErrorValidacion('Servicio no válido');
     await comprobarAsignacion(c, d.servicioId, d.personalId);
-    return (
+    const creado = (
       await c.query(
         `INSERT INTO turnos(personal_id,servicio_id,sede_id,fecha,hora_inicio,hora_fin,estado,creado_por,puesto,funcion,evidencias_requeridas,evidencias_registradas,evidencia_limite)
     VALUES($1,$2,$3,$4,$5,$6,'sin_confirmar',$7,$8,$9,$10,0,$11) RETURNING *`,
@@ -96,6 +96,7 @@ const crearTurno = async (d, u) =>
         ]
       )
     ).rows[0];
+    return (await c.query('SELECT * FROM turnos WHERE id=$1',[creado.id])).rows[0];
   });
 const reasignar = async (id, d, u) =>
   tx(u.id, d.motivo, async (c) => {
@@ -248,7 +249,7 @@ const opcionesTurno = async (q, u) => {
 const resultado = async (q) => evaluarFuentes(await repo.fuentes(), q);
 const guardarEvaluacion = async (q, u) => {
   const data = await resultado(q);
-  await tx(u.id, 'Evaluación operativo-v2', async (c) => {
+  await tx(u.id, 'Evaluación operativo-v4', async (c) => {
     await c.query('SELECT bi.refrescar()');
     for (const s of data.tabla)
       await c.query(

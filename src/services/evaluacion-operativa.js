@@ -11,9 +11,7 @@ const formatoHora = new Intl.DateTimeFormat('en-GB', {
 });
 const fechaLocal = (d) => formatoFecha.format(new Date(d));
 const franja = (d) => {
-  const h = Number(
-    formatoHora.format(new Date(d))
-  );
+  const h = Number(formatoHora.format(new Date(d)));
   return h >= 6 && h < 18 ? 'diurno' : 'nocturno';
 };
 function filtros(query = {}, ahora = new Date()) {
@@ -44,135 +42,127 @@ function filtros(query = {}, ahora = new Date()) {
     fin: fin.toISOString(),
   };
 }
-function criterio(def, n, d, faltantes = 0) {
+function kpiTasa(n, d) {
+  if (d === 0) return { numerador: n, denominador: d, tasa: null };
+  return { numerador: n, denominador: d, tasa: (100 * n) / d };
+}
+function criterio(def, kpi01n, kpi01d, kpi02n, kpi02d, faltantes = 0) {
   const peso = Number(def.peso),
-    umbral = Number(def.umbral);
-  const tasa = d > 0 && faltantes === 0 ? (100 * n) / d : null;
+    umbral = Number(def.umbral || 20);
+  const kpi01 = kpiTasa(kpi01n, kpi01d);
+  const kpi02 = kpiTasa(kpi02n, kpi02d);
+  const tasasDisponibles = [kpi01.tasa, kpi02.tasa].filter((t) => t !== null);
+  const tasa =
+    faltantes > 0
+      ? null
+      : tasasDisponibles.length > 0
+        ? tasasDisponibles.reduce((s, v) => s + v, 0) / tasasDisponibles.length
+        : null;
   const riesgo =
     tasa === null ? null : Math.min(100, ((100 - tasa) / umbral) * 100);
+  const estado =
+    faltantes > 0
+      ? 'Faltan datos'
+      : kpi01d === 0 && kpi02d === 0
+        ? 'Sin casos'
+        : 'Evaluado';
   return {
     ...def,
     peso,
     umbral,
-    numerador: n,
-    denominador: d,
-    faltantes,
+    kpi01,
+    kpi02,
     tasa,
     riesgo,
     aporte: riesgo === null ? null : riesgo * peso,
-    estado: faltantes ? 'Faltan datos' : d === 0 ? 'Sin casos' : 'Evaluado',
+    faltantes,
+    estado,
+    numerador: kpi01n + kpi02n,
+    denominador: kpi01d + kpi02d,
   };
 }
-function calcular(turnos, incidencias, defs, corte) {
+function calcular(turnos, incidencias, defs, corte, fuentes = {}) {
   const ahora = +new Date(corte),
     vencidos = turnos.filter((t) => +new Date(t.fin_programado) <= ahora);
-  const iniciados = turnos.filter(
-    (t) => +new Date(t.inicio_programado) <= ahora
+  const conAsistencia = vencidos.filter(
+    (t) => t.asistencia_validada && t.ingreso_real && +new Date(t.ingreso_real) < +new Date(t.fin_programado)
   );
-  const faltaAsistencia = (t) => t.personal_id && !t.asistencia_validada;
-  const cumple = vencidos.filter(
-    (t) =>
-      t.asistencia_validada &&
-      t.ingreso_real &&
-      t.salida_real &&
-      t.estado === 'cumplido' &&
-      +new Date(t.ingreso_real) < +new Date(t.fin_programado) &&
-      +new Date(t.salida_real) >= +new Date(t.fin_programado)
-  ).length;
-  const presencias = iniciados.filter(
-    (t) =>
-      t.personal_id &&
-      t.asistencia_validada &&
-      t.ingreso_real &&
-      +new Date(t.ingreso_real) <= ahora &&
-      +new Date(t.ingreso_real) < +new Date(t.fin_programado)
-  );
-  const puntuales = presencias.filter(
+  const puntuales = conAsistencia.filter(
     (t) =>
       +new Date(t.ingreso_real) <=
-      +new Date(t.inicio_programado) + t.tolerancia_min * 60000
-  ).length;
-  const obligaciones = turnos.filter(
-    (t) => +new Date(t.evidencia_limite || t.fin_programado) <= ahora
+      +new Date(t.inicio_programado) + (t.tolerancia_min || 0) * 60000
   );
-  const faltaEv = obligaciones.filter(
-    (t) =>
-      t.evidencias_requeridas === null ||
-      (t.evidencias_requeridas > 0 &&
-        (t.evidencias_registradas === null || !t.evidencia_limite))
-  ).length;
-  let requeridas = 0,
-    registradas = 0;
-  for (const t of obligaciones) {
-    requeridas += t.evidencias_requeridas || 0;
-    let declaradasEnPlazo = 0;
-    if (
-      t.evidencia_registro &&
-      +new Date(t.evidencia_registro) <= +new Date(t.evidencia_limite)
-    )
-      declaradasEnPlazo = Math.min(
-        t.evidencias_requeridas || 0,
-        t.evidencias_registradas || 0
-      );
-    registradas += Math.min(
-      t.evidencias_requeridas || 0,
-      Math.max(declaradasEnPlazo, t.evidencias_vinculadas_en_plazo || 0)
-    );
-  }
-  const faltaSla = incidencias.filter((i) => !i.sla_min).length;
-  const elegibles = incidencias.filter(
-    (i) =>
-      i.sla_min &&
-      (i.fecha_atencion ||
-        +new Date(i.fecha_registro) + i.sla_min * 60000 <= ahora)
-  );
-  const oportunas = elegibles.filter(
-    (i) =>
-      i.fecha_atencion &&
-      +new Date(i.fecha_atencion) - +new Date(i.fecha_registro) <=
-        i.sla_min * 60000
-  ).length;
-  const sinProgramacion = turnos.length ? 0 : 1;
+  const kpi01n = conAsistencia.length,
+    kpi01d = vencidos.length;
+  const kpi02n = puntuales.length,
+    kpi02d = conAsistencia.length;
+  const ids = new Set(turnos.map((t) => t.id));
+  const enCorte = (v) => v && Number.isFinite(+new Date(v)) && +new Date(v) <= ahora;
+  const vinculadas = (lista) => Array.isArray(lista) ? lista.filter((v) => ids.has(v.turno_id) && !v.eliminado) : null;
+  const revisiones = vinculadas(fuentes.evidenciasServicio);
+  const realizadas = (revisiones || []).filter((e) => e.protocolo_id && enCorte(e.fecha_revision) && ['aprobada', 'observada'].includes(e.estado_revision));
+  const conformes = realizadas.filter((e) => e.conforme === true || (e.conforme == null && e.estado_revision === 'aprobada'));
+  const verificaciones = vinculadas(fuentes.verificacionesConsignas);
+  const verificadas = (verificaciones || []).filter((v) => enCorte(v.creado_en));
+  const obligaciones = vinculadas(fuentes.obligaciones);
+  const exigibles = (obligaciones || []).filter((v) => enCorte(v.fecha_limite));
+  const actividades = exigibles.filter((v) => v.tipo === 'actividad');
+  const reportes = exigibles.filter((v) => v.tipo === 'reporte');
+  const rondas = vinculadas(fuentes.rondas);
+  const rondasExigibles = (rondas || []).filter((v) => enCorte(v.fecha_programada));
+  const planFaltante = turnos.filter((t) => enCorte(t.inicio_programado) && !t.plan_kpi_validado).length;
+  const completadas = (lista) => lista.filter((v) => enCorte(v.fecha_completada)).length;
+  const plazos = (campo, fecha) => incidencias.filter((i) => Number(i[campo]) > 0 &&
+    (enCorte(i[fecha]) || +new Date(i.fecha_registro) + Number(i[campo]) * 60000 <= ahora));
+  const resolucion = plazos('sla_resolucion_min', 'fecha_cierre');
+  const atencion = plazos('sla_min', 'fecha_atencion');
   const c = [
-    criterio(
-      defs[0],
-      cumple,
-      vencidos.length,
-      vencidos.filter(faltaAsistencia).length + sinProgramacion
-    ),
-    criterio(
-      defs[1],
-      puntuales,
-      presencias.length,
-      iniciados.filter(faltaAsistencia).length + sinProgramacion
-    ),
-    criterio(
-      defs[2],
-      presencias.length,
-      iniciados.length,
-      iniciados.filter(faltaAsistencia).length + sinProgramacion
-    ),
-    criterio(defs[3], registradas, requeridas, faltaEv),
-    criterio(defs[4], oportunas, elegibles.length, faltaSla),
+    criterio(defs[0], kpi01n, kpi01d, kpi02n, kpi02d,
+      vencidos.filter((t) => t.personal_id && !t.asistencia_validada).length),
+    criterio(defs[1], conformes.length, realizadas.length,
+      verificadas.filter((v) => v.cumplida === true).length, verificadas.length,
+      Number(revisiones === null) + Number(verificaciones === null)),
+    criterio(defs[2], completadas(actividades), actividades.length,
+      completadas(rondasExigibles.filter((r) => r.estado === 'completada')), rondasExigibles.length,
+      planFaltante + Number(obligaciones === null) + Number(rondas === null)),
+    criterio(defs[3], completadas(reportes), reportes.length,
+      reportes.filter((r) => enCorte(r.fecha_completada) && +new Date(r.fecha_completada) <= +new Date(r.fecha_limite)).length, reportes.length,
+      planFaltante + Number(obligaciones === null)),
+    criterio(defs[4], resolucion.filter((i) => i.estado === 'cerrada' && enCorte(i.fecha_cierre)).length, resolucion.length,
+      atencion.filter((i) => enCorte(i.fecha_atencion) && +new Date(i.fecha_atencion) <= +new Date(i.fecha_registro) + Number(i.sla_min) * 60000).length, atencion.length,
+      incidencias.filter((i) => !(Number(i.sla_min) > 0) || !(Number(i.sla_resolucion_min) > 0) || (i.estado === 'cerrada' && !i.fecha_cierre)).length),
   ];
-  // Sin obligaciones/casos no hay desviación si la fuente está completa; nunca sustituye faltantes.
+  const observaciones = [
+    'Valide la asistencia de los turnos vencidos asignados, incluida la inasistencia.',
+    'Compruebe la disponibilidad de las verificaciones de protocolos y consignas.',
+    'Configure el plan operativo en Servicios y registre actividades y rondas en el detalle de Turnos.',
+    'Configure los reportes en el plan de Servicios y entregue su contenido desde el detalle de Turnos.',
+    'Defina los plazos de atención y resolución en Incidencias y registre atención/cierre.',
+  ];
+  c.forEach((x,i) => { x.observaciones = x.faltantes ? observaciones[i] : null; });
   for (const x of c)
-    if (!x.faltantes && !x.denominador) {
+    if (!x.faltantes && x.kpi01.denominador === 0 && x.kpi02.denominador === 0) {
       x.riesgo = 0;
       x.aporte = 0;
       x.estado = 'Sin casos';
     }
-  const completo = c.every((x) => x.aporte !== null),
-    puntaje = completo ? c.reduce((s, x) => s + x.aporte, 0) : null;
+  const sinProgramacion = turnos.length === 0;
+  const completo = !sinProgramacion && c.every((x) => x.aporte !== null);
+  const criticidad = completo ? c.reduce((s, x) => s + x.aporte, 0) : null;
+  const puntaje = criticidad;
+  const iniciados = turnos.filter(
+    (t) => +new Date(t.inicio_programado) <= ahora
+  );
   return {
     criterios: c,
     puntaje,
+    criticidad,
     nivel:
-      puntaje === null
+      criticidad === null
         ? 'sin_datos'
-        : puntaje >= 60
+        : criticidad >= 60
           ? 'alta'
-          : puntaje >= 30
+          : criticidad >= 30
             ? 'media'
             : 'baja',
     completo,
@@ -214,6 +204,12 @@ function evaluarFuentes(data, query = {}) {
           porTurno.get(i.turno_id)?.inicio_programado || i.fecha_registro
         ) === f.turno)
   );
+  const fuentes = {
+    verificacionesConsignas: data.verificacionesConsignas || null,
+    rondas: data.rondas || null,
+    evidenciasServicio: data.evidenciasServicio ?? null,
+    obligaciones: data.obligaciones ?? null,
+  };
   const tabla = servicios
     .map((s) => ({
       ...s,
@@ -223,12 +219,28 @@ function evaluarFuentes(data, query = {}) {
         ts.filter((t) => t.servicio_id === s.id),
         inc.filter((i) => i.servicio_id === s.id),
         data.criterios,
-        f.fin
+        f.fin,
+        {
+          verificacionesConsignas: fuentes.verificacionesConsignas
+            ? fuentes.verificacionesConsignas.filter(
+                (v) => ts.some((t) => t.servicio_id === s.id && t.id === v.turno_id)
+              )
+            : null,
+          rondas: fuentes.rondas
+            ? fuentes.rondas.filter(
+                (r) => r.servicio_id === s.id
+              )
+            : null,
+          obligaciones: fuentes.obligaciones,
+          evidenciasServicio: fuentes.evidenciasServicio?.filter(
+            (e) => e.servicio_id === s.id
+          ) ?? null,
+        }
       ),
     }))
     .sort(
       (a, b) =>
-        (b.puntaje ?? -1) - (a.puntaje ?? -1) ||
+        (b.criticidad ?? -1) - (a.criticidad ?? -1) ||
         a.nombre.localeCompare(b.nombre)
     );
   const dias = [
@@ -244,7 +256,8 @@ function evaluarFuentes(data, query = {}) {
       ts.filter((t) => t.dia === dia),
       inc.filter((i) => fechaLocal(i.fecha_registro) === dia),
       data.criterios,
-      f.fin
+      f.fin,
+      fuentes
     ),
   }));
   const criticas = inc
@@ -256,7 +269,7 @@ function evaluarFuentes(data, query = {}) {
         new Date(a.fecha_registro) - new Date(b.fecha_registro)
     );
   return {
-    version: 'operativo-v2',
+    version: 'operativo-v4',
     demo: Boolean(data.demo),
     demo_generada_en: data.demo_generada_en || null,
     filtros: f,

@@ -1,4 +1,4 @@
--- Segur Track · instalación completa · generado 2026-11-04T14:32:20.563Z
+-- Segur Track · instalación completa · generado 2026-11-18T23:13:15.194Z
 -- PostgreSQL. Ejecutar con psql; detenerse ante cualquier error.
 \encoding UTF8
 \set ON_ERROR_STOP on
@@ -17,7 +17,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 --
 
 
--- Dumped from database version 18.6 (ac70818)
+-- Dumped from database version 18.7 (a21afb5)
 -- Dumped by pg_dump version 18.6
 
 SET statement_timeout = 0;
@@ -103,6 +103,88 @@ BEGIN
   VALUES(NEW.id,to_jsonb(OLD),to_jsonb(NEW),NULLIF(current_setting('app.usuario_id',true),'')::int,NULLIF(current_setting('app.motivo',true),''));
  END IF;
  RETURN NEW;
+END $$;
+
+
+--
+-- Name: completar_plazos_incidencia(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.completar_plazos_incidencia() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE cfg configuracion_operativa%ROWTYPE;
+BEGIN
+ SELECT * INTO cfg FROM configuracion_operativa WHERE id=1;
+ IF NEW.sla_min IS NULL THEN
+   NEW.sla_min := CASE NEW.prioridad WHEN 'alta' THEN cfg.sla_alta WHEN 'media' THEN cfg.sla_media ELSE cfg.sla_baja END;
+ END IF;
+ IF NEW.sla_resolucion_min IS NULL THEN
+   NEW.sla_resolucion_min := CASE NEW.prioridad WHEN 'alta' THEN cfg.resolucion_alta WHEN 'media' THEN cfg.resolucion_media ELSE cfg.resolucion_baja END;
+   NEW.origen_plazo := 'configuracion_vigente';
+ END IF;
+ RETURN NEW;
+END $$;
+
+
+--
+-- Name: generar_plan_turno(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.generar_plan_turno() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN PERFORM programar_plan_turno(NEW.id); RETURN NEW; END $$;
+
+
+--
+-- Name: programar_plan_turno(integer); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.programar_plan_turno(turno integer) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE t turnos%ROWTYPE; p RECORD; inicio TIMESTAMPTZ; fin TIMESTAMPTZ;
+ duracion INT; minuto INT; sec INT; actor INT;
+BEGIN
+ SELECT * INTO t FROM turnos WHERE id=turno AND NOT eliminado FOR UPDATE;
+ IF NOT FOUND THEN RETURN; END IF;
+ IF NOT EXISTS(SELECT 1 FROM planes_operativos WHERE servicio_id=t.servicio_id AND confirmado) THEN
+   UPDATE turnos SET plan_kpi_validado=FALSE WHERE id=turno AND plan_kpi_validado;
+   RETURN;
+ END IF;
+ inicio := (t.fecha+t.hora_inicio) AT TIME ZONE 'America/Lima';
+ fin := (t.fecha+t.hora_fin+CASE WHEN t.hora_fin<=t.hora_inicio THEN INTERVAL '1 day' ELSE INTERVAL '0' END) AT TIME ZONE 'America/Lima';
+ duracion := EXTRACT(EPOCH FROM fin-inicio)::INT/60;
+ SELECT COALESCE(t.creado_por,actualizado_por) INTO actor FROM planes_operativos WHERE servicio_id=t.servicio_id;
+ UPDATE obligaciones_operativas o SET eliminado=TRUE,actualizado_en=NOW()
+ WHERE o.turno_id=turno AND o.plantilla_id IS NOT NULL AND o.fecha_completada IS NULL AND NOT o.eliminado
+ AND NOT EXISTS(SELECT 1 FROM plantillas_operativas pp WHERE pp.id=o.plantilla_id AND pp.servicio_id=t.servicio_id AND pp.activo);
+ UPDATE rondas r SET eliminado=TRUE,actualizado_en=NOW()
+ WHERE r.turno_id=turno AND r.plantilla_id IS NOT NULL AND r.fecha_completada IS NULL AND NOT r.eliminado
+ AND NOT EXISTS(SELECT 1 FROM plantillas_operativas pp WHERE pp.id=r.plantilla_id AND pp.servicio_id=t.servicio_id AND pp.activo);
+ FOR p IN SELECT * FROM plantillas_operativas WHERE servicio_id=t.servicio_id AND activo ORDER BY id LOOP
+   sec := 0;
+   FOR minuto IN SELECT generate_series(LEAST(COALESCE(p.minutos_desde_inicio,duracion),duracion),
+     CASE WHEN p.intervalo_min IS NULL THEN LEAST(COALESCE(p.minutos_desde_inicio,duracion),duracion) ELSE duracion END,
+     COALESCE(p.intervalo_min,duracion+1)) LOOP
+     sec := sec+1;
+     IF p.tipo='ronda' THEN
+       INSERT INTO rondas(turno_id,servicio_id,fecha_programada,ruta,creado_por,plantilla_id,secuencia,origen)
+       VALUES(turno,t.servicio_id,inicio+make_interval(mins=>minuto),p.descripcion,actor,p.id,sec,'plan_servicio')
+       ON CONFLICT(turno_id,plantilla_id,secuencia) WHERE NOT eliminado DO UPDATE
+       SET fecha_programada=EXCLUDED.fecha_programada,ruta=EXCLUDED.ruta
+       WHERE rondas.fecha_completada IS NULL;
+     ELSE
+       INSERT INTO obligaciones_operativas(turno_id,tipo,descripcion,fecha_limite,creado_por,plantilla_id,secuencia,origen)
+       VALUES(turno,p.tipo,p.descripcion,inicio+make_interval(mins=>minuto),actor,p.id,sec,'plan_servicio')
+       ON CONFLICT(turno_id,plantilla_id,secuencia) WHERE NOT eliminado DO UPDATE
+       SET fecha_limite=EXCLUDED.fecha_limite,descripcion=EXCLUDED.descripcion
+       WHERE obligaciones_operativas.fecha_completada IS NULL;
+     END IF;
+   END LOOP;
+ END LOOP;
+ UPDATE turnos SET plan_kpi_validado=TRUE WHERE id=turno AND NOT plan_kpi_validado;
 END $$;
 
 
@@ -328,11 +410,54 @@ CREATE TABLE public.configuracion_operativa (
     sla_baja integer DEFAULT 1440 NOT NULL,
     datos_demo boolean DEFAULT false NOT NULL,
     demo_generada_en timestamp with time zone,
+    resolucion_alta integer DEFAULT 240 NOT NULL,
+    resolucion_media integer DEFAULT 1440 NOT NULL,
+    resolucion_baja integer DEFAULT 2880 NOT NULL,
     CONSTRAINT configuracion_operativa_id_check CHECK ((id = 1)),
+    CONSTRAINT configuracion_operativa_resolucion_alta_check CHECK ((resolucion_alta > 0)),
+    CONSTRAINT configuracion_operativa_resolucion_baja_check CHECK ((resolucion_baja > 0)),
+    CONSTRAINT configuracion_operativa_resolucion_media_check CHECK ((resolucion_media > 0)),
     CONSTRAINT configuracion_operativa_sla_alta_check CHECK ((sla_alta > 0)),
     CONSTRAINT configuracion_operativa_sla_baja_check CHECK ((sla_baja > 0)),
     CONSTRAINT configuracion_operativa_sla_media_check CHECK ((sla_media > 0))
 );
+
+
+--
+-- Name: consignas; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.consignas (
+    id integer NOT NULL,
+    servicio_id integer NOT NULL,
+    descripcion text NOT NULL,
+    activo boolean DEFAULT true NOT NULL,
+    eliminado boolean DEFAULT false NOT NULL,
+    eliminado_en timestamp with time zone,
+    eliminado_por integer,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: consignas_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.consignas_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: consignas_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.consignas_id_seq OWNED BY public.consignas.id;
 
 
 --
@@ -539,6 +664,7 @@ CREATE TABLE public.evidencias_servicio (
     creado_en timestamp with time zone DEFAULT now() NOT NULL,
     actualizado_en timestamp with time zone DEFAULT now() NOT NULL,
     turno_id integer,
+    conforme boolean,
     CONSTRAINT evidencias_servicio_estado_revision_check CHECK (((estado_revision)::text = ANY ((ARRAY['pendiente'::character varying, 'aprobada'::character varying, 'observada'::character varying])::text[])))
 );
 
@@ -617,10 +743,20 @@ CREATE TABLE public.incidencias (
     responsable_id integer,
     turno_id integer,
     sla_min integer,
+    sla_resolucion_min integer,
+    origen_plazo text DEFAULT 'historico'::text NOT NULL,
     CONSTRAINT incidencias_estado_check CHECK (((estado)::text = ANY ((ARRAY['abierta'::character varying, 'en_atencion'::character varying, 'cerrada'::character varying])::text[]))),
     CONSTRAINT incidencias_prioridad_check CHECK (((prioridad)::text = ANY ((ARRAY['alta'::character varying, 'media'::character varying, 'baja'::character varying])::text[]))),
-    CONSTRAINT incidencias_sla_min_check CHECK ((sla_min > 0))
+    CONSTRAINT incidencias_sla_min_check CHECK ((sla_min > 0)),
+    CONSTRAINT incidencias_sla_resolucion_min_check CHECK ((sla_resolucion_min > 0))
 );
+
+
+--
+-- Name: COLUMN incidencias.sla_resolucion_min; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.incidencias.sla_resolucion_min IS 'Minutos desde fecha_registro hasta el vencimiento de resolución. NULL indica dato histórico desconocido.';
 
 
 --
@@ -698,6 +834,62 @@ CREATE TABLE public.modelo_operativo (
     CONSTRAINT modelo_operativo_peso_check CHECK (((peso >= (0)::numeric) AND (peso <= (1)::numeric))),
     CONSTRAINT modelo_operativo_umbral_check CHECK (((umbral > (0)::numeric) AND (umbral <= (100)::numeric)))
 );
+
+
+--
+-- Name: obligaciones_operativas; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.obligaciones_operativas (
+    id integer NOT NULL,
+    turno_id integer NOT NULL,
+    tipo text NOT NULL,
+    descripcion text NOT NULL,
+    fecha_limite timestamp with time zone NOT NULL,
+    fecha_completada timestamp with time zone,
+    creado_por integer NOT NULL,
+    completado_por integer,
+    eliminado boolean DEFAULT false NOT NULL,
+    eliminado_por integer,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT now() NOT NULL,
+    plantilla_id integer,
+    secuencia integer DEFAULT 1 NOT NULL,
+    resultado text,
+    evidencia_url text,
+    origen text DEFAULT 'manual'::text NOT NULL,
+    evidencias jsonb DEFAULT '[]'::jsonb NOT NULL,
+    CONSTRAINT obligaciones_operativas_descripcion_check CHECK ((length(TRIM(BOTH FROM descripcion)) > 0)),
+    CONSTRAINT obligaciones_operativas_evidencias_check CHECK (((jsonb_typeof(evidencias) = 'array'::text) AND (jsonb_array_length(evidencias) <= 6))),
+    CONSTRAINT obligaciones_operativas_tipo_check CHECK ((tipo = ANY (ARRAY['actividad'::text, 'reporte'::text])))
+);
+
+
+--
+-- Name: TABLE obligaciones_operativas; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.obligaciones_operativas IS 'Una fila por actividad programada o reporte requerido. Exigible cuando fecha_limite <= corte; se excluyen anulados.';
+
+
+--
+-- Name: obligaciones_operativas_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.obligaciones_operativas_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: obligaciones_operativas_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.obligaciones_operativas_id_seq OWNED BY public.obligaciones_operativas.id;
 
 
 --
@@ -785,6 +977,58 @@ ALTER SEQUENCE public.personal_id_seq OWNED BY public.personal.id;
 
 
 --
+-- Name: planes_operativos; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.planes_operativos (
+    servicio_id integer NOT NULL,
+    confirmado boolean DEFAULT false NOT NULL,
+    actualizado_por integer,
+    actualizado_en timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: plantillas_operativas; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.plantillas_operativas (
+    id integer NOT NULL,
+    servicio_id integer NOT NULL,
+    tipo text NOT NULL,
+    descripcion text NOT NULL,
+    minutos_desde_inicio integer,
+    intervalo_min integer,
+    activo boolean DEFAULT true NOT NULL,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT plantillas_operativas_descripcion_check CHECK ((length(TRIM(BOTH FROM descripcion)) >= 3)),
+    CONSTRAINT plantillas_operativas_intervalo_min_check CHECK (((intervalo_min >= 1) AND (intervalo_min <= 1440))),
+    CONSTRAINT plantillas_operativas_minutos_desde_inicio_check CHECK (((minutos_desde_inicio >= 0) AND (minutos_desde_inicio <= 1440))),
+    CONSTRAINT plantillas_operativas_tipo_check CHECK ((tipo = ANY (ARRAY['actividad'::text, 'ronda'::text, 'reporte'::text])))
+);
+
+
+--
+-- Name: plantillas_operativas_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.plantillas_operativas_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: plantillas_operativas_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.plantillas_operativas_id_seq OWNED BY public.plantillas_operativas.id;
+
+
+--
 -- Name: protocolos; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -864,6 +1108,55 @@ CREATE SEQUENCE public.reportes_generados_id_seq
 --
 
 ALTER SEQUENCE public.reportes_generados_id_seq OWNED BY public.reportes_generados.id;
+
+
+--
+-- Name: rondas; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.rondas (
+    id integer NOT NULL,
+    turno_id integer NOT NULL,
+    servicio_id integer NOT NULL,
+    fecha_programada timestamp with time zone NOT NULL,
+    fecha_completada timestamp with time zone,
+    ruta text,
+    observaciones text,
+    estado character varying(15) DEFAULT 'programada'::character varying NOT NULL,
+    creado_por integer,
+    eliminado boolean DEFAULT false NOT NULL,
+    eliminado_en timestamp with time zone,
+    eliminado_por integer,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT now() NOT NULL,
+    plantilla_id integer,
+    secuencia integer DEFAULT 1 NOT NULL,
+    completado_por integer,
+    origen text DEFAULT 'manual'::text NOT NULL,
+    evidencias jsonb DEFAULT '[]'::jsonb NOT NULL,
+    CONSTRAINT rondas_estado_check CHECK (((estado)::text = ANY ((ARRAY['programada'::character varying, 'completada'::character varying, 'omitida'::character varying])::text[]))),
+    CONSTRAINT rondas_evidencias_check CHECK (((jsonb_typeof(evidencias) = 'array'::text) AND (jsonb_array_length(evidencias) <= 6)))
+);
+
+
+--
+-- Name: rondas_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.rondas_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: rondas_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.rondas_id_seq OWNED BY public.rondas.id;
 
 
 --
@@ -1205,11 +1498,21 @@ CREATE TABLE public.turnos (
     evidencia_registro timestamp with time zone,
     funcion text,
     clave_importacion text,
+    rondas_requeridas integer DEFAULT 0 NOT NULL,
+    rondas_completadas integer DEFAULT 0 NOT NULL,
+    plan_kpi_validado boolean DEFAULT false NOT NULL,
     CONSTRAINT turnos_estado_check CHECK (((estado)::text = ANY ((ARRAY['programado'::character varying, 'confirmado'::character varying, 'sin_confirmar'::character varying, 'cumplido'::character varying, 'pendiente'::character varying])::text[]))),
     CONSTRAINT turnos_evidencias_registradas_check CHECK ((evidencias_registradas >= 0)),
     CONSTRAINT turnos_evidencias_requeridas_check CHECK ((evidencias_requeridas >= 0)),
     CONSTRAINT turnos_tolerancia_min_check CHECK (((tolerancia_min >= 0) AND (tolerancia_min <= 120)))
 );
+
+
+--
+-- Name: COLUMN turnos.plan_kpi_validado; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.turnos.plan_kpi_validado IS 'Supervisión confirmó el inventario de actividades, rondas y reportes, incluso si no aplica ninguno.';
 
 
 --
@@ -1370,6 +1673,41 @@ ALTER SEQUENCE public.vehiculos_id_seq OWNED BY public.vehiculos.id;
 
 
 --
+-- Name: verificaciones_consignas; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.verificaciones_consignas (
+    id integer NOT NULL,
+    turno_id integer NOT NULL,
+    consigna_id integer NOT NULL,
+    cumplida boolean NOT NULL,
+    observacion text,
+    verificado_por integer,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: verificaciones_consignas_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.verificaciones_consignas_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: verificaciones_consignas_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.verificaciones_consignas_id_seq OWNED BY public.verificaciones_consignas.id;
+
+
+--
 -- Name: vw_bi_cumplimiento_servicios; Type: VIEW; Schema: public; Owner: -
 --
 
@@ -1436,12 +1774,12 @@ CREATE VIEW public.vw_bi_evaluacion_multicriterio AS
     em.nivel,
     array_agg(cm.nombre ORDER BY ec.puntaje) FILTER (WHERE (ec.influye = true)) AS criterios_que_influyen
    FROM ((((public.evaluaciones_multicriterio em
-     JOIN public.servicios s ON (((em.servicio_id = s.id) AND (s.eliminado = false))))
-     JOIN public.clientes c ON (((s.cliente_id = c.id) AND (c.eliminado = false))))
-     JOIN public.evaluacion_criterios ec ON (((ec.evaluacion_id = em.id) AND (ec.eliminado = false))))
-     JOIN public.criterios_mcda cm ON (((ec.criterio_id = cm.id) AND (cm.eliminado = false))))
-  WHERE (em.eliminado = false)
-  GROUP BY em.id, s.nombre, c.nombre, em.fecha_evaluacion, em.puntaje_global, em.nivel;
+     JOIN public.servicios s ON (((s.id = em.servicio_id) AND (NOT s.eliminado))))
+     JOIN public.clientes c ON (((c.id = s.cliente_id) AND (NOT c.eliminado))))
+     JOIN public.evaluacion_criterios ec ON (((ec.evaluacion_id = em.id) AND (NOT ec.eliminado))))
+     JOIN public.criterios_mcda cm ON (((cm.id = ec.criterio_id) AND (NOT cm.eliminado))))
+  WHERE (NOT em.eliminado)
+  GROUP BY em.id, s.id, s.nombre, c.nombre, em.fecha_evaluacion, em.puntaje_global, em.nivel;
 
 
 --
@@ -1478,6 +1816,73 @@ CREATE VIEW public.vw_bi_incidencias_por_tipo AS
   WHERE (i.eliminado = false)
   GROUP BY ti.nombre
   ORDER BY (count(*)) DESC;
+
+
+--
+-- Name: vw_bi_kpi_consignas; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.vw_bi_kpi_consignas AS
+ SELECT s.id AS servicio_id,
+    s.nombre AS servicio,
+    c.nombre AS cliente,
+    date_trunc('week'::text, vc.creado_en) AS semana,
+    count(*) AS verificaciones_realizadas,
+    count(*) FILTER (WHERE (vc.cumplida = true)) AS consignas_cumplidas,
+    round((((count(*) FILTER (WHERE (vc.cumplida = true)))::numeric / (NULLIF(count(*), 0))::numeric) * (100)::numeric), 2) AS kpi04_consignas_pct
+   FROM ((((public.verificaciones_consignas vc
+     JOIN public.turnos t ON (((t.id = vc.turno_id) AND (NOT t.eliminado))))
+     JOIN public.consignas cn ON (((cn.servicio_id = t.servicio_id) AND (vc.consigna_id = cn.id) AND (cn.eliminado = false))))
+     JOIN public.servicios s ON (((cn.servicio_id = s.id) AND (s.eliminado = false))))
+     JOIN public.clientes c ON (((s.cliente_id = c.id) AND (c.eliminado = false))))
+  WHERE (vc.creado_en <= now())
+  GROUP BY s.id, s.nombre, c.nombre, (date_trunc('week'::text, vc.creado_en));
+
+
+--
+-- Name: vw_bi_kpi_rondas; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.vw_bi_kpi_rondas AS
+ SELECT s.id AS servicio_id,
+    s.nombre AS servicio,
+    c.nombre AS cliente,
+    date_trunc('week'::text, r.fecha_programada) AS semana,
+    count(*) AS rondas_programadas,
+    count(*) FILTER (WHERE (((r.estado)::text = 'completada'::text) AND (r.fecha_completada <= now()))) AS rondas_completadas,
+    count(*) FILTER (WHERE ((r.estado)::text = 'omitida'::text)) AS rondas_omitidas,
+    round((((count(*) FILTER (WHERE ((r.estado)::text = 'completada'::text)))::numeric / (NULLIF(count(*), 0))::numeric) * (100)::numeric), 2) AS kpi06_rondas_pct
+   FROM ((public.rondas r
+     JOIN public.servicios s ON (((r.servicio_id = s.id) AND (s.eliminado = false))))
+     JOIN public.clientes c ON (((s.cliente_id = c.id) AND (c.eliminado = false))))
+  WHERE ((r.eliminado = false) AND (r.fecha_programada <= now()))
+  GROUP BY s.id, s.nombre, c.nombre, (date_trunc('week'::text, r.fecha_programada));
+
+
+--
+-- Name: vw_bi_kpis_operativos; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.vw_bi_kpis_operativos AS
+ SELECT e.id AS evaluacion_id,
+    e.servicio_id,
+    e.version,
+    e.creado_en,
+    e.filtros,
+    (c.value ->> 'codigo'::text) AS criterio,
+    (c.value ->> 'nombre'::text) AS nombre,
+    (c.value ->> 'estado'::text) AS estado,
+    ((c.value ->> 'tasa'::text))::numeric AS cumplimiento,
+    ((c.value ->> 'riesgo'::text))::numeric AS riesgo,
+    ((c.value ->> 'peso'::text))::numeric AS peso,
+    ((c.value ->> 'umbral'::text))::numeric AS umbral,
+    ((c.value ->> 'aporte'::text))::numeric AS aporte,
+    ((e.resultado ->> 'criticidad'::text))::numeric AS criticidad,
+    (c.value -> 'kpi01'::text) AS primer_kpi,
+    (c.value -> 'kpi02'::text) AS segundo_kpi
+   FROM (public.evaluaciones_operativas e
+     CROSS JOIN LATERAL jsonb_array_elements((e.resultado -> 'criterios'::text)) c(value))
+  WHERE (e.version = 'operativo-v4'::text);
 
 
 --
@@ -1551,6 +1956,13 @@ ALTER TABLE ONLY public.clientes ALTER COLUMN id SET DEFAULT nextval('public.cli
 
 
 --
+-- Name: consignas id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consignas ALTER COLUMN id SET DEFAULT nextval('public.consignas_id_seq'::regclass);
+
+
+--
 -- Name: contenedores id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1607,6 +2019,13 @@ ALTER TABLE ONLY public.incidencias_historial ALTER COLUMN id SET DEFAULT nextva
 
 
 --
+-- Name: obligaciones_operativas id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.obligaciones_operativas ALTER COLUMN id SET DEFAULT nextval('public.obligaciones_operativas_id_seq'::regclass);
+
+
+--
 -- Name: personal id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1621,6 +2040,13 @@ ALTER TABLE ONLY public.personal_ausencias ALTER COLUMN id SET DEFAULT nextval('
 
 
 --
+-- Name: plantillas_operativas id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plantillas_operativas ALTER COLUMN id SET DEFAULT nextval('public.plantillas_operativas_id_seq'::regclass);
+
+
+--
 -- Name: protocolos id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1632,6 +2058,13 @@ ALTER TABLE ONLY public.protocolos ALTER COLUMN id SET DEFAULT nextval('public.p
 --
 
 ALTER TABLE ONLY public.reportes_generados ALTER COLUMN id SET DEFAULT nextval('public.reportes_generados_id_seq'::regclass);
+
+
+--
+-- Name: rondas id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rondas ALTER COLUMN id SET DEFAULT nextval('public.rondas_id_seq'::regclass);
 
 
 --
@@ -1716,6 +2149,13 @@ ALTER TABLE ONLY public.usuarios ALTER COLUMN id SET DEFAULT nextval('public.usu
 --
 
 ALTER TABLE ONLY public.vehiculos ALTER COLUMN id SET DEFAULT nextval('public.vehiculos_id_seq'::regclass);
+
+
+--
+-- Name: verificaciones_consignas id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.verificaciones_consignas ALTER COLUMN id SET DEFAULT nextval('public.verificaciones_consignas_id_seq'::regclass);
 
 
 --
@@ -1828,6 +2268,14 @@ ALTER TABLE ONLY public.clientes
 
 ALTER TABLE ONLY public.configuracion_operativa
     ADD CONSTRAINT configuracion_operativa_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: consignas consignas_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consignas
+    ADD CONSTRAINT consignas_pkey PRIMARY KEY (id);
 
 
 --
@@ -1959,6 +2407,14 @@ ALTER TABLE ONLY public.modelo_operativo
 
 
 --
+-- Name: obligaciones_operativas obligaciones_operativas_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.obligaciones_operativas
+    ADD CONSTRAINT obligaciones_operativas_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: personal_ausencias personal_ausencias_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1975,6 +2431,22 @@ ALTER TABLE ONLY public.personal
 
 
 --
+-- Name: planes_operativos planes_operativos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.planes_operativos
+    ADD CONSTRAINT planes_operativos_pkey PRIMARY KEY (servicio_id);
+
+
+--
+-- Name: plantillas_operativas plantillas_operativas_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plantillas_operativas
+    ADD CONSTRAINT plantillas_operativas_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: protocolos protocolos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1988,6 +2460,14 @@ ALTER TABLE ONLY public.protocolos
 
 ALTER TABLE ONLY public.reportes_generados
     ADD CONSTRAINT reportes_generados_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: rondas rondas_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rondas
+    ADD CONSTRAINT rondas_pkey PRIMARY KEY (id);
 
 
 --
@@ -2143,10 +2623,25 @@ ALTER TABLE ONLY public.vehiculos
 
 
 --
+-- Name: verificaciones_consignas verificaciones_consignas_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.verificaciones_consignas
+    ADD CONSTRAINT verificaciones_consignas_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: idx_actividad_creado_en; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_actividad_creado_en ON public.actividad_reciente USING btree (creado_en DESC);
+
+
+--
+-- Name: idx_consignas_servicio; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_consignas_servicio ON public.consignas USING btree (servicio_id) WHERE (eliminado = false);
 
 
 --
@@ -2206,6 +2701,48 @@ CREATE INDEX idx_incidencias_servicio_fecha_activas ON public.incidencias USING 
 
 
 --
+-- Name: idx_obligacion_plantilla_turno; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_obligacion_plantilla_turno ON public.obligaciones_operativas USING btree (turno_id, plantilla_id, secuencia) WHERE (NOT eliminado);
+
+
+--
+-- Name: idx_obligaciones_turno; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_obligaciones_turno ON public.obligaciones_operativas USING btree (turno_id) WHERE (NOT eliminado);
+
+
+--
+-- Name: idx_ronda_plantilla_turno; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_ronda_plantilla_turno ON public.rondas USING btree (turno_id, plantilla_id, secuencia) WHERE (NOT eliminado);
+
+
+--
+-- Name: idx_rondas_estado; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_rondas_estado ON public.rondas USING btree (estado) WHERE (eliminado = false);
+
+
+--
+-- Name: idx_rondas_servicio; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_rondas_servicio ON public.rondas USING btree (servicio_id) WHERE (eliminado = false);
+
+
+--
+-- Name: idx_rondas_turno; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_rondas_turno ON public.rondas USING btree (turno_id) WHERE (eliminado = false);
+
+
+--
 -- Name: idx_turnos_personal_fecha; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2224,6 +2761,20 @@ CREATE INDEX idx_turnos_servicio_fecha ON public.turnos USING btree (servicio_id
 --
 
 CREATE INDEX idx_turnos_servicio_fecha_activos ON public.turnos USING btree (servicio_id, fecha) WHERE (NOT eliminado);
+
+
+--
+-- Name: idx_verificaciones_consignas_consigna; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_verificaciones_consignas_consigna ON public.verificaciones_consignas USING btree (consigna_id);
+
+
+--
+-- Name: idx_verificaciones_consignas_turno; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_verificaciones_consignas_turno ON public.verificaciones_consignas USING btree (turno_id);
 
 
 --
@@ -2280,6 +2831,20 @@ CREATE TRIGGER trg_auditar_incidencia AFTER INSERT OR UPDATE ON public.incidenci
 --
 
 CREATE TRIGGER trg_auditar_turno AFTER INSERT OR UPDATE ON public.turnos FOR EACH ROW EXECUTE FUNCTION public.auditar_turno();
+
+
+--
+-- Name: turnos trg_generar_plan_turno; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_generar_plan_turno AFTER INSERT OR UPDATE OF servicio_id, fecha, hora_inicio, hora_fin ON public.turnos FOR EACH ROW EXECUTE FUNCTION public.generar_plan_turno();
+
+
+--
+-- Name: incidencias trg_plazos_incidencia; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_plazos_incidencia BEFORE INSERT OR UPDATE ON public.incidencias FOR EACH ROW EXECUTE FUNCTION public.completar_plazos_incidencia();
 
 
 --
@@ -2368,6 +2933,22 @@ ALTER TABLE ONLY public.actividad_reciente
 
 ALTER TABLE ONLY public.clientes
     ADD CONSTRAINT clientes_eliminado_por_fkey FOREIGN KEY (eliminado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: consignas consignas_eliminado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consignas
+    ADD CONSTRAINT consignas_eliminado_por_fkey FOREIGN KEY (eliminado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: consignas consignas_servicio_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consignas
+    ADD CONSTRAINT consignas_servicio_id_fkey FOREIGN KEY (servicio_id) REFERENCES public.servicios(id);
 
 
 --
@@ -2579,6 +3160,46 @@ ALTER TABLE ONLY public.incidencias
 
 
 --
+-- Name: obligaciones_operativas obligaciones_operativas_completado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.obligaciones_operativas
+    ADD CONSTRAINT obligaciones_operativas_completado_por_fkey FOREIGN KEY (completado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: obligaciones_operativas obligaciones_operativas_creado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.obligaciones_operativas
+    ADD CONSTRAINT obligaciones_operativas_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: obligaciones_operativas obligaciones_operativas_eliminado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.obligaciones_operativas
+    ADD CONSTRAINT obligaciones_operativas_eliminado_por_fkey FOREIGN KEY (eliminado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: obligaciones_operativas obligaciones_operativas_plantilla_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.obligaciones_operativas
+    ADD CONSTRAINT obligaciones_operativas_plantilla_id_fkey FOREIGN KEY (plantilla_id) REFERENCES public.plantillas_operativas(id);
+
+
+--
+-- Name: obligaciones_operativas obligaciones_operativas_turno_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.obligaciones_operativas
+    ADD CONSTRAINT obligaciones_operativas_turno_id_fkey FOREIGN KEY (turno_id) REFERENCES public.turnos(id);
+
+
+--
 -- Name: personal_ausencias personal_ausencias_creado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2619,6 +3240,30 @@ ALTER TABLE ONLY public.personal
 
 
 --
+-- Name: planes_operativos planes_operativos_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.planes_operativos
+    ADD CONSTRAINT planes_operativos_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: planes_operativos planes_operativos_servicio_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.planes_operativos
+    ADD CONSTRAINT planes_operativos_servicio_id_fkey FOREIGN KEY (servicio_id) REFERENCES public.servicios(id);
+
+
+--
+-- Name: plantillas_operativas plantillas_operativas_servicio_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plantillas_operativas
+    ADD CONSTRAINT plantillas_operativas_servicio_id_fkey FOREIGN KEY (servicio_id) REFERENCES public.servicios(id);
+
+
+--
 -- Name: protocolos protocolos_eliminado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2640,6 +3285,54 @@ ALTER TABLE ONLY public.reportes_generados
 
 ALTER TABLE ONLY public.reportes_generados
     ADD CONSTRAINT reportes_generados_generado_por_fkey FOREIGN KEY (generado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: rondas rondas_completado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rondas
+    ADD CONSTRAINT rondas_completado_por_fkey FOREIGN KEY (completado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: rondas rondas_creado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rondas
+    ADD CONSTRAINT rondas_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: rondas rondas_eliminado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rondas
+    ADD CONSTRAINT rondas_eliminado_por_fkey FOREIGN KEY (eliminado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: rondas rondas_plantilla_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rondas
+    ADD CONSTRAINT rondas_plantilla_id_fkey FOREIGN KEY (plantilla_id) REFERENCES public.plantillas_operativas(id);
+
+
+--
+-- Name: rondas rondas_servicio_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rondas
+    ADD CONSTRAINT rondas_servicio_id_fkey FOREIGN KEY (servicio_id) REFERENCES public.servicios(id);
+
+
+--
+-- Name: rondas rondas_turno_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rondas
+    ADD CONSTRAINT rondas_turno_id_fkey FOREIGN KEY (turno_id) REFERENCES public.turnos(id);
 
 
 --
@@ -2880,6 +3573,30 @@ ALTER TABLE ONLY public.turnos
 
 ALTER TABLE ONLY public.usuarios
     ADD CONSTRAINT usuarios_eliminado_por_fkey FOREIGN KEY (eliminado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: verificaciones_consignas verificaciones_consignas_consigna_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.verificaciones_consignas
+    ADD CONSTRAINT verificaciones_consignas_consigna_id_fkey FOREIGN KEY (consigna_id) REFERENCES public.consignas(id);
+
+
+--
+-- Name: verificaciones_consignas verificaciones_consignas_turno_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.verificaciones_consignas
+    ADD CONSTRAINT verificaciones_consignas_turno_id_fkey FOREIGN KEY (turno_id) REFERENCES public.turnos(id);
+
+
+--
+-- Name: verificaciones_consignas verificaciones_consignas_verificado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.verificaciones_consignas
+    ADD CONSTRAINT verificaciones_consignas_verificado_por_fkey FOREIGN KEY (verificado_por) REFERENCES public.usuarios(id);
 
 
 --

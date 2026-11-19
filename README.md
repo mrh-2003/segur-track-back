@@ -38,6 +38,7 @@ CREATE DATABASE segur_track;
 ```bash
 psql -U postgres -d segur_track -f database/schema.sql
 psql -U postgres -d segur_track -f database/seed.sql
+npm run db:migrate
 psql -U postgres -d segur_track -f database/views_bi.sql
 ```
 
@@ -69,3 +70,7 @@ El servidor iniciará en `http://localhost:3001` con prefijo de API en `http://l
 - `src/repositories/`: Consultas SQL parametrizadas a PostgreSQL con eliminación lógica (`eliminado = FALSE`).
 - `src/validators/`: Validación de esquemas de entrada con Zod.
 - `src/middlewares/`: Autenticación JWT, verificación de roles, manejo global de errores.
+
+El modelo vigente es `operativo-v4` (18/11/2026), con cinco criterios y diez KPI. Consulte [database/KPIS_MULTICRITERIO.md](database/KPIS_MULTICRITERIO.md) para el origen de datos y tratamiento del histórico.
+
+Los módulos Servicios y Turnos programan y ejecutan las obligaciones del monitor. En una base marcada como demostración, `npm run db:demo:kpis` agrega los ejemplos necesarios sin reiniciar datos. Consulte [el resumen de módulos y tablas](database/RESUMEN_CAMBIOS_KPIS.md).

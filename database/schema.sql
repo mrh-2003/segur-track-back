@@ -92,24 +92,26 @@ CREATE TABLE IF NOT EXISTS servicio_personal (
 );
 
 CREATE TABLE IF NOT EXISTS turnos (
-  id               SERIAL PRIMARY KEY,
-  personal_id      INT          NOT NULL REFERENCES personal(id),
-  servicio_id      INT          NOT NULL REFERENCES servicios(id),
-  sede_id          INT          NOT NULL REFERENCES sedes(id),
-  fecha            DATE         NOT NULL,
-  hora_inicio      TIME         NOT NULL,
-  hora_fin         TIME         NOT NULL,
-  estado           VARCHAR(15)  NOT NULL DEFAULT 'programado'
-                   CHECK (estado IN ('programado','confirmado','sin_confirmar','cumplido','pendiente')),
-  relevo_pendiente BOOLEAN      NOT NULL DEFAULT FALSE,
-  creado_por       INT          REFERENCES usuarios(id),
-  motivo_rechazo   TEXT,
-  evidencias       JSONB        NOT NULL DEFAULT '[]'::jsonb,
-  eliminado        BOOLEAN      NOT NULL DEFAULT FALSE,
-  eliminado_en     TIMESTAMPTZ,
-  eliminado_por    INT          REFERENCES usuarios(id),
-  creado_en        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  actualizado_en   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  id                  SERIAL PRIMARY KEY,
+  personal_id         INT          NOT NULL REFERENCES personal(id),
+  servicio_id         INT          NOT NULL REFERENCES servicios(id),
+  sede_id             INT          NOT NULL REFERENCES sedes(id),
+  fecha               DATE         NOT NULL,
+  hora_inicio         TIME         NOT NULL,
+  hora_fin            TIME         NOT NULL,
+  estado              VARCHAR(15)  NOT NULL DEFAULT 'programado'
+                      CHECK (estado IN ('programado','confirmado','sin_confirmar','cumplido','pendiente')),
+  relevo_pendiente    BOOLEAN      NOT NULL DEFAULT FALSE,
+  creado_por          INT          REFERENCES usuarios(id),
+  motivo_rechazo      TEXT,
+  evidencias          JSONB        NOT NULL DEFAULT '[]'::jsonb,
+  rondas_requeridas   INT          NOT NULL DEFAULT 0,
+  rondas_completadas  INT          NOT NULL DEFAULT 0,
+  eliminado           BOOLEAN      NOT NULL DEFAULT FALSE,
+  eliminado_en        TIMESTAMPTZ,
+  eliminado_por       INT          REFERENCES usuarios(id),
+  creado_en           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  actualizado_en      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_turnos_personal_fecha
@@ -275,6 +277,7 @@ CREATE TABLE IF NOT EXISTS evidencias_servicio (
   titulo          VARCHAR(150) NOT NULL,
   descripcion     TEXT,
   archivo_url     TEXT,
+  conforme        BOOLEAN,
   estado_revision VARCHAR(20)  NOT NULL DEFAULT 'pendiente'
                   CHECK (estado_revision IN ('pendiente','aprobada','observada')),
   observacion     TEXT,
@@ -292,3 +295,85 @@ CREATE INDEX IF NOT EXISTS idx_evidencias_servicio
 
 CREATE INDEX IF NOT EXISTS idx_evidencias_personal
   ON evidencias_servicio(personal_id) WHERE eliminado = FALSE;
+
+CREATE TABLE IF NOT EXISTS consignas (
+  id             SERIAL PRIMARY KEY,
+  servicio_id    INT          NOT NULL REFERENCES servicios(id),
+  descripcion    TEXT         NOT NULL,
+  activo         BOOLEAN      NOT NULL DEFAULT TRUE,
+  eliminado      BOOLEAN      NOT NULL DEFAULT FALSE,
+  eliminado_en   TIMESTAMPTZ,
+  eliminado_por  INT          REFERENCES usuarios(id),
+  creado_en      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  actualizado_en TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_consignas_servicio
+  ON consignas(servicio_id) WHERE eliminado = FALSE;
+
+CREATE TABLE IF NOT EXISTS verificaciones_consignas (
+  id             SERIAL PRIMARY KEY,
+  turno_id       INT          NOT NULL REFERENCES turnos(id),
+  consigna_id    INT          NOT NULL REFERENCES consignas(id),
+  cumplida       BOOLEAN      NOT NULL,
+  observacion    TEXT,
+  verificado_por INT          REFERENCES usuarios(id),
+  creado_en      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_verificaciones_consignas_turno
+  ON verificaciones_consignas(turno_id);
+
+CREATE INDEX IF NOT EXISTS idx_verificaciones_consignas_consigna
+  ON verificaciones_consignas(consigna_id);
+
+CREATE TABLE IF NOT EXISTS rondas (
+  id               SERIAL PRIMARY KEY,
+  turno_id         INT          NOT NULL REFERENCES turnos(id),
+  servicio_id      INT          NOT NULL REFERENCES servicios(id),
+  fecha_programada TIMESTAMPTZ  NOT NULL,
+  fecha_completada TIMESTAMPTZ,
+  ruta             TEXT,
+  observaciones    TEXT,
+  evidencias       JSONB NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(evidencias)='array' AND jsonb_array_length(evidencias)<=6),
+  estado           VARCHAR(15)  NOT NULL DEFAULT 'programada'
+                   CHECK (estado IN ('programada','completada','omitida')),
+  creado_por       INT          REFERENCES usuarios(id),
+  eliminado        BOOLEAN      NOT NULL DEFAULT FALSE,
+  eliminado_en     TIMESTAMPTZ,
+  eliminado_por    INT          REFERENCES usuarios(id),
+  creado_en        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  actualizado_en   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rondas_turno
+  ON rondas(turno_id) WHERE eliminado = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_rondas_servicio
+  ON rondas(servicio_id) WHERE eliminado = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_rondas_estado
+  ON rondas(estado) WHERE eliminado = FALSE;
+
+-- Granularidad de los nuevos KPI (18/11/2026). Configuración y modelo: migración 008.
+CREATE TABLE IF NOT EXISTS obligaciones_operativas (
+ id SERIAL PRIMARY KEY,
+ turno_id INT NOT NULL REFERENCES turnos(id),
+ tipo TEXT NOT NULL CHECK(tipo IN ('actividad','reporte')),
+ descripcion TEXT NOT NULL CHECK(length(trim(descripcion))>0),
+ fecha_limite TIMESTAMPTZ NOT NULL,
+ fecha_completada TIMESTAMPTZ,
+ evidencias JSONB NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(evidencias)='array' AND jsonb_array_length(evidencias)<=6),
+ creado_por INT NOT NULL REFERENCES usuarios(id),
+ completado_por INT REFERENCES usuarios(id),
+ eliminado BOOLEAN NOT NULL DEFAULT FALSE,
+ eliminado_por INT REFERENCES usuarios(id),
+ creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_obligaciones_turno ON obligaciones_operativas(turno_id) WHERE NOT eliminado;
+
+ALTER TABLE turnos ADD COLUMN IF NOT EXISTS plan_kpi_validado BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE incidencias ADD COLUMN IF NOT EXISTS sla_resolucion_min INT CHECK(sla_resolucion_min>0);
+
+-- Planes reutilizables, ejecución de reportes y plazos automáticos: aplicar también la migración 009.

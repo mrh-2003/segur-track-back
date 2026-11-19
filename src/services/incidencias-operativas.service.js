@@ -30,6 +30,7 @@ const guardar = async (id, d, u) =>
           responsable_id: d.responsableId,
           turno_id: d.turnoId,
           sla_min: d.slaMin,
+          sla_resolucion_min: d.slaResolucionMin,
         }).filter(([, v]) => v !== undefined)
       ),
     };
@@ -58,13 +59,18 @@ const guardar = async (id, d, u) =>
       ).rows[0];
       datos.sla_min = cfg['sla_' + datos.prioridad];
     }
+    if (!datos.sla_resolucion_min) {
+      const cfg = (await c.query('SELECT * FROM configuracion_operativa WHERE id=1')).rows[0];
+      datos.sla_resolucion_min = cfg['resolucion_' + datos.prioridad];
+    }
+    const origenPlazo=d.slaResolucionMin !== undefined ? 'manual' : actual?.sla_resolucion_min ? actual.origen_plazo : 'configuracion_vigente';
     const estado = datos.estado || 'abierta';
     if (estado === 'cerrada' && !actual?.fecha_atencion)
       throw new ErrorConflicto('Atienda la incidencia antes de cerrarla');
     if (id)
       return (
         await c.query(
-          `UPDATE incidencias SET tipo_incidencia_id=$2,servicio_id=$3,descripcion=$4,prioridad=$5,estado=$6::text,observacion=$7,responsable_id=$8,turno_id=$9,sla_min=$10,
+          `UPDATE incidencias SET tipo_incidencia_id=$2,servicio_id=$3,descripcion=$4,prioridad=$5,estado=$6::text,observacion=$7,responsable_id=$8,turno_id=$9,sla_min=$10,sla_resolucion_min=$11,origen_plazo=$12,
   fecha_atencion=CASE WHEN $6::text='en_atencion' THEN COALESCE(fecha_atencion,NOW()) ELSE fecha_atencion END,
   fecha_cierre=CASE WHEN $6::text='cerrada' THEN COALESCE(fecha_cierre,NOW()) ELSE NULL END,actualizado_en=NOW() WHERE id=$1 RETURNING *`,
           [
@@ -78,6 +84,8 @@ const guardar = async (id, d, u) =>
             datos.responsable_id,
             datos.turno_id || null,
             datos.sla_min,
+            datos.sla_resolucion_min || null,
+            origenPlazo,
           ]
         )
       ).rows[0];
@@ -85,7 +93,7 @@ const guardar = async (id, d, u) =>
       .rows[0].n;
     return (
       await c.query(
-        `INSERT INTO incidencias(codigo,tipo_incidencia_id,servicio_id,personal_id,descripcion,prioridad,registrado_por,responsable_id,turno_id,sla_min) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        `INSERT INTO incidencias(codigo,tipo_incidencia_id,servicio_id,personal_id,descripcion,prioridad,registrado_por,responsable_id,turno_id,sla_min,sla_resolucion_min,origen_plazo) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
         [
           'INC-' + String(seq).padStart(4, '0'),
           datos.tipo_incidencia_id,
@@ -97,6 +105,8 @@ const guardar = async (id, d, u) =>
           datos.responsable_id,
           datos.turno_id || null,
           datos.sla_min,
+          datos.sla_resolucion_min,
+          origenPlazo,
         ]
       )
     ).rows[0];

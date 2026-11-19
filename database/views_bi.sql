@@ -85,24 +85,18 @@ LEFT JOIN incidencias i ON i.servicio_id = s.id AND i.eliminado = FALSE
 WHERE s.eliminado = FALSE
 GROUP BY s.id, s.nombre, c.nombre;
 
+-- Se conserva el contrato de columnas de la vista histórica.
 CREATE OR REPLACE VIEW vw_bi_evaluacion_multicriterio AS
-SELECT
-  em.id                                                     AS evaluacion_id,
-  s.nombre                                                  AS servicio,
-  c.nombre                                                  AS cliente,
-  em.fecha_evaluacion,
-  em.puntaje_global,
-  em.nivel,
-  ARRAY_AGG(
-    cm.nombre ORDER BY ec.puntaje ASC
-  ) FILTER (WHERE ec.influye = TRUE)                        AS criterios_que_influyen
+SELECT em.id AS evaluacion_id,s.nombre AS servicio,c.nombre AS cliente,
+ em.fecha_evaluacion,em.puntaje_global,em.nivel,
+ ARRAY_AGG(cm.nombre ORDER BY ec.puntaje ASC) FILTER(WHERE ec.influye=TRUE) AS criterios_que_influyen
 FROM evaluaciones_multicriterio em
-JOIN servicios s ON em.servicio_id = s.id AND s.eliminado = FALSE
-JOIN clientes c  ON s.cliente_id   = c.id AND c.eliminado = FALSE
-JOIN evaluacion_criterios ec ON ec.evaluacion_id = em.id AND ec.eliminado = FALSE
-JOIN criterios_mcda cm ON ec.criterio_id = cm.id AND cm.eliminado = FALSE
-WHERE em.eliminado = FALSE
-GROUP BY em.id, s.nombre, c.nombre, em.fecha_evaluacion, em.puntaje_global, em.nivel;
+JOIN servicios s ON s.id=em.servicio_id AND NOT s.eliminado
+JOIN clientes c ON c.id=s.cliente_id AND NOT c.eliminado
+JOIN evaluacion_criterios ec ON ec.evaluacion_id=em.id AND NOT ec.eliminado
+JOIN criterios_mcda cm ON cm.id=ec.criterio_id AND NOT cm.eliminado
+WHERE NOT em.eliminado
+GROUP BY em.id,s.id,s.nombre,c.nombre,em.fecha_evaluacion,em.puntaje_global,em.nivel;
 
 DO $$
 BEGIN
@@ -116,6 +110,45 @@ BEGIN
 END
 $$;
 
+CREATE OR REPLACE VIEW vw_bi_kpi_consignas AS
+SELECT
+  s.id                                                               AS servicio_id,
+  s.nombre                                                           AS servicio,
+  c.nombre                                                           AS cliente,
+  DATE_TRUNC('week', vc.creado_en)                                   AS semana,
+  COUNT(*)                                                           AS verificaciones_realizadas,
+  COUNT(*) FILTER (WHERE vc.cumplida = TRUE)                         AS consignas_cumplidas,
+  ROUND(
+    COUNT(*) FILTER (WHERE vc.cumplida = TRUE)::NUMERIC
+    / NULLIF(COUNT(*), 0) * 100, 2
+  )                                                                  AS kpi04_consignas_pct
+FROM verificaciones_consignas vc
+JOIN turnos t ON t.id=vc.turno_id AND NOT t.eliminado
+JOIN consignas cn    ON cn.servicio_id=t.servicio_id AND vc.consigna_id  = cn.id  AND cn.eliminado  = FALSE
+JOIN servicios s     ON cn.servicio_id  = s.id   AND s.eliminado   = FALSE
+JOIN clientes c      ON s.cliente_id    = c.id   AND c.eliminado   = FALSE
+WHERE vc.creado_en <= NOW()
+GROUP BY s.id, s.nombre, c.nombre, DATE_TRUNC('week', vc.creado_en);
+
+CREATE OR REPLACE VIEW vw_bi_kpi_rondas AS
+SELECT
+  s.id                                                               AS servicio_id,
+  s.nombre                                                           AS servicio,
+  c.nombre                                                           AS cliente,
+  DATE_TRUNC('week', r.fecha_programada)                             AS semana,
+  COUNT(*)                                                           AS rondas_programadas,
+  COUNT(*) FILTER (WHERE r.estado = 'completada' AND r.fecha_completada <= NOW())                    AS rondas_completadas,
+  COUNT(*) FILTER (WHERE r.estado = 'omitida')                       AS rondas_omitidas,
+  ROUND(
+    COUNT(*) FILTER (WHERE r.estado = 'completada')::NUMERIC
+    / NULLIF(COUNT(*), 0) * 100, 2
+  )                                                                  AS kpi06_rondas_pct
+FROM rondas r
+JOIN servicios s ON r.servicio_id = s.id AND s.eliminado = FALSE
+JOIN clientes c  ON s.cliente_id  = c.id AND c.eliminado = FALSE
+WHERE r.eliminado = FALSE AND r.fecha_programada <= NOW()
+GROUP BY s.id, s.nombre, c.nombre, DATE_TRUNC('week', r.fecha_programada);
+
 DO $$
 BEGIN
   IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'bi_lector') THEN
@@ -127,7 +160,9 @@ BEGIN
         vw_bi_incidencias,
         vw_bi_incidencias_por_tipo,
         vw_bi_desempeno_servicio,
-        vw_bi_evaluacion_multicriterio
+        vw_bi_evaluacion_multicriterio,
+        vw_bi_kpi_consignas,
+        vw_bi_kpi_rondas
       TO bi_lector;
     EXCEPTION WHEN OTHERS THEN
       RAISE NOTICE 'No se pudieron otorgar permisos a bi_lector: %', SQLERRM;
@@ -135,3 +170,20 @@ BEGIN
   END IF;
 END
 $$;
+
+-- Misma fuente de resultados que el monitor: sin reinterpretar las versiones anteriores.
+CREATE OR REPLACE VIEW vw_bi_kpis_operativos AS
+SELECT e.id AS evaluacion_id,e.servicio_id,e.version,e.creado_en,e.filtros,
+ c->>'codigo' AS criterio,c->>'nombre' AS nombre,c->>'estado' AS estado,
+ (c->>'tasa')::numeric AS cumplimiento,(c->>'riesgo')::numeric AS riesgo,
+ (c->>'peso')::numeric AS peso,(c->>'umbral')::numeric AS umbral,
+ (c->>'aporte')::numeric AS aporte,(e.resultado->>'criticidad')::numeric AS criticidad,
+ c->'kpi01' AS primer_kpi,c->'kpi02' AS segundo_kpi
+FROM evaluaciones_operativas e
+CROSS JOIN LATERAL jsonb_array_elements(e.resultado->'criterios') c
+WHERE e.version='operativo-v4';
+DO $$ BEGIN
+ IF EXISTS(SELECT FROM pg_roles WHERE rolname='bi_lector') THEN
+   GRANT SELECT ON vw_bi_kpis_operativos TO bi_lector;
+ END IF;
+END $$;
