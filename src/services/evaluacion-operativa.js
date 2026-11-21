@@ -107,13 +107,13 @@ function calcular(turnos, incidencias, defs, corte, fuentes = {}) {
   const obligaciones = vinculadas(fuentes.obligaciones);
   const exigibles = (obligaciones || []).filter((v) => enCorte(v.fecha_limite));
   const actividades = exigibles.filter((v) => v.tipo === 'actividad');
-  const reportes = exigibles.filter((v) => v.tipo === 'reporte');
+  const reportes = exigibles.filter((v) => v.tipo === 'reporte').map(v=>({...v,fecha_completada:v.primera_entrega_en||v.fecha_completada}));
   const rondas = vinculadas(fuentes.rondas);
   const rondasExigibles = (rondas || []).filter((v) => enCorte(v.fecha_programada));
   const planFaltante = turnos.filter((t) => enCorte(t.inicio_programado) && !t.plan_kpi_validado).length;
   const completadas = (lista) => lista.filter((v) => enCorte(v.fecha_completada)).length;
   const plazos = (campo, fecha) => incidencias.filter((i) => Number(i[campo]) > 0 &&
-    (enCorte(i[fecha]) || +new Date(i.fecha_registro) + Number(i[campo]) * 60000 <= ahora));
+    (enCorte(i[fecha]) || (campo==='sla_resolucion_min'&&i.plazo_resolucion_extendido ? +new Date(i.plazo_resolucion_extendido) : +new Date(i.fecha_registro) + Number(i[campo]) * 60000) <= ahora));
   const resolucion = plazos('sla_resolucion_min', 'fecha_cierre');
   const atencion = plazos('sla_min', 'fecha_atencion');
   const c = [
@@ -186,7 +186,7 @@ function evaluarFuentes(data, query = {}) {
     (s) => !f.servicios.length || f.servicios.includes(s.id)
   );
   const ids = new Set(servicios.map((s) => s.id)),
-    porTurno = new Map(data.turnos.map((t) => [t.id, t]));
+    porTurno = new Map((data.turnosReferencia || data.turnos).map((t) => [t.id, t]));
   const ts = data.turnos.filter(
     (t) =>
       ids.has(t.servicio_id) &&

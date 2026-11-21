@@ -7,6 +7,8 @@ const { autorizar } = require('../middlewares/auth');
 
 const router = Router();
 router.param('id', require('../middlewares/identificador'));
+router.param('personalId', require('../middlewares/identificador'));
+router.get('/servicios/:id/agentes/:personalId',autorizar('administrador','jefe_operaciones','supervisor'),ctrl.detallePorServicio);
 
 router.get(
   '/criterios',

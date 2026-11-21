@@ -55,7 +55,7 @@ const fuentes = async () => {
     c.release();
   }
 };
-const catalogos = async () => {
+const catalogos = async (usuario) => {
   const [p, s, c] = await Promise.all([
     pool.query(
       'SELECT id,nombres,apellidos,documento,cargo,estado,sede_id,horario_inicio,horario_fin,dias_laborales FROM personal WHERE NOT eliminado ORDER BY apellidos,nombres'
@@ -67,7 +67,8 @@ const catalogos = async () => {
       "SELECT s.id,s.nombre,s.estado,s.sede_id,s.hora_inicio,s.hora_fin,TO_CHAR(s.fecha_inicio,'YYYY-MM-DD') AS fecha_inicio,TO_CHAR(s.fecha_fin,'YYYY-MM-DD') AS fecha_fin,COALESCE(p.confirmado,FALSE) AS plan_confirmado FROM servicios s LEFT JOIN planes_operativos p ON p.servicio_id=s.id WHERE NOT s.eliminado ORDER BY s.nombre"
     ),
   ]);
-  return { personal: p.rows, sedes: s.rows, servicios: c.rows };
+  const ids=await require('../services/acceso-servicios').serviciosPermitidos(usuario);
+  return { personal: p.rows, sedes: s.rows, servicios: ids===null?c.rows:c.rows.filter(s=>ids.includes(s.id)) };
 };
 module.exports = { fuentes, catalogos };
 
@@ -90,10 +91,12 @@ module.exports.responsables = () =>
       "SELECT id,nombres||' '||apellidos AS nombre FROM personal WHERE NOT eliminado AND estado='activo' ORDER BY apellidos,nombres"
     )
     .then((x) => x.rows);
-module.exports.turnosServicio = (id, u) =>
-  pool
+module.exports.turnosServicio = async (id, u) => {
+  await require('../services/acceso-servicios').comprobar(id,u);
+  return pool
     .query(
       `SELECT t.id,t.personal_id,t.ingreso_real,t.salida_real,t.estado,t.servicio_id,TO_CHAR(t.fecha,'YYYY-MM-DD') AS fecha,t.hora_inicio,t.hora_fin,t.puesto FROM turnos t LEFT JOIN personal p ON p.id=t.personal_id WHERE t.servicio_id=$1 AND NOT t.eliminado AND ($2::boolean OR p.usuario_id=$3) ORDER BY t.fecha DESC,t.hora_inicio`,
       [id, u.rol !== 'operador', u.id]
     )
     .then((x) => x.rows);
+};

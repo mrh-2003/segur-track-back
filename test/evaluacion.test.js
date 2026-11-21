@@ -45,3 +45,19 @@ test('fechas posteriores al corte no mejoran resultados; límites inclusivos',()
 test('periodo, franja, servicio y evolución filtran las fuentes',()=>{
  const r=evaluarFuentes({servicios:[{id:1,nombre:'Uno'},{id:2,nombre:'Dos'}],turnos:[turno(),turno({id:2,servicio_id:2}),turno({id:3,inicio_programado:'2026-11-19T11:00:00Z'})],incidencias:[],criterios:defs,corte,...fuentes()},{periodo:'3',servicios:'1',turno:'diurno'});assert.equal(r.tabla.length,1);assert.equal(r.tabla[0].turnos,1);assert.equal(r.evolucion.length,1);assert.equal(r.version,'operativo-v4');assert.equal(filtros({periodo:'3'},new Date(corte)).inicio,'2026-11-16T05:00:00.000Z');assert.equal(franja('2026-11-19T04:00:00Z'),'nocturno');assert.throws(()=>filtros({servicios:'1);DROP'}));assert.throws(()=>filtros({periodo:'365'}));
 });
+
+test('la ampliación solo cambia la exigibilidad cuando existe un plazo aprobado',()=>{
+ const pendiente=incidencia({estado:'en_atencion',fecha_cierre:null,ampliacion_pendiente:true});
+ assert.equal(calcular([turno()],[pendiente],defs,corte,fuentes()).criterios[4].kpi01.denominador,1);
+ const aprobada={...pendiente,plazo_resolucion_extendido:'2026-11-19T22:00:00Z'};
+ assert.equal(calcular([turno()],[aprobada],defs,corte,fuentes()).criterios[4].kpi01.denominador,0);
+ const cerrada={...aprobada,estado:'cerrada',fecha_cierre:'2026-11-18T21:00:00Z'};
+ assert.equal(calcular([turno()],[cerrada],defs,corte,fuentes()).criterios[4].kpi01.tasa,100);
+});
+
+test('el análisis por agente conserva la franja del turno de referencia de una incidencia',()=>{
+ const propio=turno({id:1,inicio_programado:'2026-11-18T05:00:00Z'}),otro=turno({id:2,personal_id:2,inicio_programado:'2026-11-18T23:00:00Z'});
+ const r=evaluarFuentes({servicios:[{id:1,nombre:'Servicio'}],turnos:[propio],turnosReferencia:[propio,otro],
+  incidencias:[incidencia({turno_id:2,fecha_registro:'2026-11-18T15:00:00Z'})],criterios:defs,corte,...fuentes()}, {periodo:'todos',turno:'nocturno'});
+ assert.equal(r.tabla[0].criterios[4].kpi01.denominador,1);
+});

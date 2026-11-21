@@ -21,3 +21,8 @@ El script actualiza también la fecha de referencia: ejecutarlo nuevamente el mi
 Antes de aplicarlo se guardó un respaldo verificado en la carpeta `analisis`. La comprobación ensayó el cambio con rollback, comparó todas las columnas de fechas operativas, verificó la conservación de las filas y probó que una segunda ejecución no desplazara los datos nuevamente.
 
 Se excluyen del traslado las fechas administrativas de migraciones y del catálogo de criterios. Su aplicación real no es un evento del escenario.
+
+
+Actualización 21/11/2026: el traslado conserva las vigencias de metas y las fechas administrativas de usuarios. El esquema `dw` se reconstruye mediante su ETL dentro de la transacción; sus claves SCD no se desplazan manualmente. `npm run db:demo:operativa` aplica el traslado, prepara cuentas únicamente para agentes/supervisores de servicios DEMO-SRV, corrige responsables solo de incidencias sintéticas identificadas, agrega escenarios por agente y sincroniza nuevamente el DW. Los registros reales no reciben responsables inventados. El comando es repetible sin duplicar casos; las fotografías de los ejemplos son evidencias sintéticas identificadas como tales.
+
+Las incidencias que no están identificadas como demostración y sus tablas de seguimiento se excluyen del desplazamiento. El histórico sintético se desplaza conservando intervalos; si un ejemplo antiguo contiene una atención o cierre futuro, el complemento operativo lo sitúa antes del corte manteniendo su duración. Los turnos programados sí pueden continuar en fechas futuras.

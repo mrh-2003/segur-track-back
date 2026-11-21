@@ -42,10 +42,10 @@ npm run db:migrate
 psql -U postgres -d segur_track -f database/views_bi.sql
 ```
 
-3. Usuario de solo lectura para Power BI:
-El script `views_bi.sql` crea el usuario `bi_lector` con permisos de solo lectura sobre las vistas `vw_bi_*`:
-- Usuario: `bi_lector`
-- Contraseña por defecto: `BiLector2026!`
+3. Modelo dimensional para Power BI:
+Ejecutar `npm run bi:sync` para la primera carga y `database/acceso-power-bi.sql` como propietario para configurar el grupo de lectura `bi_lector`, sin contraseña incorporada. El administrador debe agregar un LOGIN de conexión a ese grupo. Power BI usa exclusivamente las tablas `dw`, con dimensiones y hechos independientes de las tablas operativas. Las vistas antiguas quedan por compatibilidad.
+
+La API sincroniza cada 60 minutos; administrador y jefe de operaciones también pueden usar **Sincronizar datos** en Dashboard BI. Consulte [el modelo Kimball, flujo, tablas y medidas DAX](database/POWER_BI_KIMBALL.md), actualizado al 19/11/2026. Incluye las diferencias entre la carga del almacén y la actualización de un informe publicado.
 
 ## Ejecución del Servidor
 
@@ -74,3 +74,6 @@ El servidor iniciará en `http://localhost:3001` con prefijo de API en `http://l
 El modelo vigente es `operativo-v4` (18/11/2026), con cinco criterios y diez KPI. Consulte [database/KPIS_MULTICRITERIO.md](database/KPIS_MULTICRITERIO.md) para el origen de datos y tratamiento del histórico.
 
 Los módulos Servicios y Turnos programan y ejecutan las obligaciones del monitor. En una base marcada como demostración, `npm run db:demo:kpis` agrega los ejemplos necesarios sin reiniciar datos. Consulte [el resumen de módulos y tablas](database/RESUMEN_CAMBIOS_KPIS.md).
+
+
+El flujo de Incidencias (21/11/2026) permite atención y resolución con imágenes por el operador responsable, ampliación de plazo con aprobación/rechazo del supervisor y alerta de vencimiento. Incluye migraciones 014–015; ejecutar `npm run db:migrate` y `npm run bi:sync`. En Prioridades el detalle del servicio y los criterios por agente se consultan en un modal. Ver [el detalle de tablas y comportamiento](database/POWER_BI_KIMBALL.md#ampliaciones-de-incidencias-y-análisis-por-agente-21112026).

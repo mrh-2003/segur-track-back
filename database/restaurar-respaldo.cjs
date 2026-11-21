@@ -28,7 +28,7 @@ const seguro = (s) => {
     if (base !== datos.base)
       throw new Error('El respaldo pertenece a otra base');
     const lista = datos.tablas.map((t) => {
-      if (!['public', 'bi'].includes(t.schemaname))
+      if (!['public', 'bi', 'dw', 'etl'].includes(t.schemaname))
         throw new Error('Esquema no permitido');
       return {
         ...t,
@@ -38,7 +38,7 @@ const seguro = (s) => {
     });
     const referencias = (
       await c.query(
-        "SELECT ns.nspname||'.'||cl.relname AS hijo,np.nspname||'.'||cp.relname AS padre FROM pg_constraint co JOIN pg_class cl ON cl.oid=co.conrelid JOIN pg_namespace ns ON ns.oid=cl.relnamespace JOIN pg_class cp ON cp.oid=co.confrelid JOIN pg_namespace np ON np.oid=cp.relnamespace WHERE co.contype='f' AND ns.nspname IN ('public','bi')"
+        "SELECT ns.nspname||'.'||cl.relname AS hijo,np.nspname||'.'||cp.relname AS padre FROM pg_constraint co JOIN pg_class cl ON cl.oid=co.conrelid JOIN pg_namespace ns ON ns.oid=cl.relnamespace JOIN pg_class cp ON cp.oid=co.confrelid JOIN pg_namespace np ON np.oid=cp.relnamespace WHERE co.contype='f' AND ns.nspname IN ('public','bi','dw','etl')"
       )
     ).rows;
     const orden = [],

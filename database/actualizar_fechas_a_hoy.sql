@@ -1,12 +1,13 @@
 -- Segur Track: trasladar el escenario de demostración al día de hoy (Lima).
 -- Todas las fechas se desplazan la misma cantidad de días; las horas no cambian.
--- Revisión: 18/11/2026. La fecha destino se calcula en America/Lima.
+-- Revisión: 21/11/2026. La fecha destino se calcula en America/Lima.
 -- Ejecutable en psql o en un editor SQL, conectado a la base del sistema.
 -- Repetir el mismo día no vuelve a desplazar las fechas.
 BEGIN;
 SET LOCAL TIME ZONE 'America/Lima';
 SET LOCAL lock_timeout = '15s';
 SELECT pg_advisory_xact_lock(741095);
+SELECT pg_advisory_xact_lock(741098);
 
 -- Solo existe durante esta conexión; no agrega funciones al esquema del sistema.
 CREATE OR REPLACE FUNCTION pg_temp.desplazar_fechas_json(valor JSONB, dias INT)
@@ -99,6 +100,8 @@ BEGIN
     SELECT fecha,EXTRACT(YEAR FROM fecha),EXTRACT(MONTH FROM fecha),EXTRACT(DAY FROM fecha),EXTRACT(WEEK FROM fecha)
     FROM _traslado_dimension_fechas;
 
+  CREATE TEMP TABLE _traslado_incidencias_demo ON COMMIT DROP AS
+    SELECT id FROM public.incidencias WHERE descripcion LIKE 'DEMO%' OR descripcion LIKE '%Caso de demostración para seguimiento operativo.%';
   -- Fechas tipadas y fechas anidadas en JSON: auditoría, evaluaciones,
   -- filtros, hitos de custodia e importaciones, manteniendo los demás valores.
   FOR t IN
@@ -112,12 +115,16 @@ BEGIN
     FROM information_schema.columns co
     JOIN information_schema.tables ta ON ta.table_schema=co.table_schema AND ta.table_name=co.table_name
     WHERE co.table_schema IN ('public','bi') AND ta.table_type='BASE TABLE'
-      AND NOT (co.table_schema='public' AND co.table_name IN ('migraciones_aplicadas','criterios_mcda'))
+      AND NOT (co.table_schema='public' AND co.table_name IN ('migraciones_aplicadas','criterios_mcda','indicadores_bi','metas_bi','usuarios'))
       AND co.data_type IN ('date','timestamp with time zone','timestamp without time zone','json','jsonb')
       AND NOT (co.table_schema='bi' AND co.table_name IN ('dim_fecha','hecho_turno','hecho_evidencia','hecho_incidencia'))
     GROUP BY co.table_schema,co.table_name ORDER BY co.table_schema,co.table_name
   LOOP
-    EXECUTE format('UPDATE %I.%I SET %s',t.table_schema,t.table_name,t.asignaciones);
+    cambios := CASE
+      WHEN t.table_schema='public' AND t.table_name='incidencias' THEN ' WHERE id IN (SELECT id FROM _traslado_incidencias_demo)'
+      WHEN t.table_schema='public' AND t.table_name IN ('incidencias_historial','incidencias_seguimiento','incidencias_ampliaciones') THEN ' WHERE incidencia_id IN (SELECT id FROM _traslado_incidencias_demo)'
+      ELSE '' END;
+    EXECUTE format('UPDATE %I.%I SET %s%s',t.table_schema,t.table_name,t.asignaciones,cambios);
   END LOOP;
 
   PERFORM bi.refrescar();
@@ -137,4 +144,13 @@ BEGIN
   RAISE NOTICE 'Escenario trasladado % día(s): % → %. Horarios y duraciones conservados.',dias,base,hoy;
 END;
 $trasladar$;
+-- Reconstruir el almacén desde las transacciones, sin desplazar manualmente dimensiones SCD.
+DO $dw$ DECLARE carga BIGINT; corte TIMESTAMPTZ; resultado_carga JSONB;
+BEGIN
+ IF to_regclass('etl.estado') IS NOT NULL THEN
+  INSERT INTO etl.ejecuciones(origen,estado) VALUES('traslado_fechas','ejecutando') RETURNING id INTO carga;
+  corte=clock_timestamp();SELECT etl.cargar_dw(carga,corte) INTO resultado_carga;
+  UPDATE etl.ejecuciones SET estado='completado',finalizado_en=clock_timestamp(),detalle=resultado_carga WHERE id=carga;
+ END IF;
+END $dw$;
 COMMIT;

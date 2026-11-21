@@ -9,6 +9,7 @@ const { ErrorNoEncontrado, ErrorConflicto } = require('../utils/errores');
 
 const listar = async (filtros, usuario) => {
   const parametros = { ...filtros };
+  if(usuario?.rol==='supervisor')parametros.supervisorId=(await require('./acceso-servicios').supervisorId(usuario)) || -1;
   if (usuario && usuario.rol === 'operador' && usuario.personalId) {
     parametros.personalId = usuario.personalId;
   }
@@ -182,9 +183,9 @@ const listarPersonalAsignado = async (servicioId) => {
   return serviciosRepo.listarPersonalAsignado(servicioId);
 };
 
-const listarTodasAsignaciones = async ({ pagina, limite, servicioId, personalId }) => {
+const listarTodasAsignaciones = async ({ pagina, limite, servicioId, personalId, supervisorId }) => {
   const { offset, paginaActual, limiteParsed } = require('../utils/paginacion').paginar(pagina, limite);
-  const { filas, total } = await serviciosRepo.listarTodasAsignaciones({ servicioId, personalId, limite: limiteParsed, offset });
+  const { filas, total } = await serviciosRepo.listarTodasAsignaciones({ servicioId, personalId, supervisorId, limite: limiteParsed, offset });
   return {
     datos: filas,
     meta: { total, pagina: paginaActual, limite: limiteParsed, paginas: Math.ceil(total / limiteParsed) },

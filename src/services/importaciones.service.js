@@ -662,7 +662,7 @@ async function confirmar(id, u) {
       }
       turnos++;
     }
-    await c.query('SELECT bi.refrescar()');
+    // El almacén dimensional se actualiza exclusivamente mediante el job o la sincronización BI.
     const resultado = { turnos, serviciosNuevos, personalNuevo };
     await c.query(
       "UPDATE importaciones SET estado='importado',resultado=$2 WHERE id=$1",

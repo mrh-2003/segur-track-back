@@ -7,19 +7,20 @@ const esGestor=(u)=>['administrador','jefe_operaciones','supervisor'].includes(u
 
 exports.listar = async (id, u) => {
   const t=await comprobarAcceso(pool, id, u);
-  const [turno, obligaciones, rondas, consignas, catalogo] = await Promise.all([
+  const [turno, obligaciones, rondas, consignas, catalogo, revisiones] = await Promise.all([
     pool.query('SELECT b.plan_kpi_validado,v.inicio_programado,v.fin_programado,NOW() AS corte FROM turnos b JOIN vw_operacion_turnos v ON v.id=b.id WHERE b.id=$1', [id]),
     pool.query('SELECT * FROM obligaciones_operativas WHERE turno_id=$1 AND NOT eliminado ORDER BY fecha_limite,id', [id]),
     pool.query('SELECT * FROM rondas WHERE turno_id=$1 AND NOT eliminado ORDER BY fecha_programada,id', [id]),
     pool.query('SELECT v.*,c.descripcion FROM verificaciones_consignas v JOIN consignas c ON c.id=v.consigna_id WHERE v.turno_id=$1 AND NOT c.eliminado ORDER BY v.id', [id]),
     pool.query('SELECT id,descripcion FROM consignas WHERE servicio_id=$1 AND activo AND NOT eliminado ORDER BY id',[t.servicio_id]),
+    pool.query('SELECT r.*,u.nombre AS revisor FROM revisiones_reportes r JOIN obligaciones_operativas o ON o.id=r.reporte_id JOIN usuarios u ON u.id=r.revisado_por WHERE o.turno_id=$1 ORDER BY r.revisado_en',[id]),
   ]);
   const calendario=turno.rows[0];
   const futuro=+new Date(calendario.inicio_programado)>+new Date(calendario.corte);
   const ingresoValido=t.ingreso_real && +new Date(t.ingreso_real)<=+new Date(calendario.corte);
   return { ...calendario,puede_registrar:!futuro && (esGestor(u)||Boolean(ingresoValido)),
     motivo_bloqueo:futuro?'Este turno todavía no comienza. Puede consultar su programación; la ejecución estará disponible desde su inicio.':!esGestor(u)&&!ingresoValido?'Registre un ingreso válido antes de ejecutar las obligaciones.':null,
-    obligaciones: obligaciones.rows, rondas: rondas.rows, consignas: consignas.rows,catalogoConsignas:catalogo.rows };
+    obligaciones: obligaciones.rows, rondas: rondas.rows, consignas: consignas.rows,catalogoConsignas:catalogo.rows,revisiones:revisiones.rows };
 };
 
 exports.registrar = (id, d, u) => tx(u.id, 'Registro de datos KPI: ' + d.tipo, async (c) => {
@@ -65,7 +66,7 @@ exports.actualizar = (turnoId, id, d, u) => tx(u.id, 'Seguimiento de obligación
   if (d.accion === 'anular') {
     return (await c.query(`UPDATE ${tabla} SET eliminado=TRUE,eliminado_por=$3,actualizado_en=NOW() WHERE id=$1 AND turno_id=$2 RETURNING *`, [id,turnoId,u.id])).rows[0];
   }
-  if (item.fecha_completada) throw new ErrorConflicto('La obligación ya fue completada. Actualice el detalle para consultar su registro.');
+  if (item.fecha_completada && !(item.tipo==='reporte' && item.estado_revision==='observado')) throw new ErrorConflicto('La obligación ya fue completada. Actualice el detalle para consultar su registro.');
   if(!esGestor(u) && !t.ingreso_real) throw new ErrorConflicto('Registre el ingreso antes de ejecutar el turno');
   const calendario=(await c.query('SELECT inicio_programado,NOW() AS corte FROM vw_operacion_turnos WHERE id=$1',[turnoId])).rows[0];
   if(+new Date(calendario.inicio_programado)>+new Date(calendario.corte))
@@ -77,6 +78,6 @@ exports.actualizar = (turnoId, id, d, u) => tx(u.id, 'Seguimiento de obligación
     throw new ErrorValidacion('La finalización debe estar entre el inicio del turno y el momento actual');
   const evidencias=d.evidencias ?? (d.evidenciaUrl?[d.evidenciaUrl]:(item.evidencias||[]));
   return (await c.query(`UPDATE ${tabla} SET fecha_completada=$4,actualizado_en=NOW(),completado_por=$3,origen='ejecucion_usuario',evidencias=$6::jsonb,
-    ${d.tipo === 'ronda' ? "estado='completada',observaciones=$5" : 'resultado=$5,evidencia_url=$7'}
+    ${d.tipo === 'ronda' ? "estado='completada',observaciones=$5" : "resultado=$5,evidencia_url=$7,primera_entrega_en=CASE WHEN tipo='reporte' THEN COALESCE(primera_entrega_en,$4) ELSE primera_entrega_en END,version_entrega=version_entrega+CASE WHEN tipo='reporte' AND fecha_completada IS NOT NULL AND estado_revision='observado' THEN 1 ELSE 0 END,estado_revision='pendiente',revisado_por=NULL,fecha_revision=NULL"}
     WHERE id=$1 AND turno_id=$2 RETURNING *`, [id,turnoId,u.id,momento,d.resultado || null,JSON.stringify(evidencias),...(d.tipo==='ronda'?[]:[evidencias[0]||null])])).rows[0];
 });

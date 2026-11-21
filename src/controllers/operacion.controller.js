@@ -9,7 +9,7 @@ const handler = (fn) => async (req, res, next) => {
     next(e);
   }
 };
-exports.catalogos = handler(() => repo.catalogos());
+exports.catalogos = handler(r => repo.catalogos(r.usuario));
 exports.opcionesTurno = handler((r) => svc.opcionesTurno(r.query, r.usuario));
 exports.disponibles = handler((r) =>
   svc.personalDisponible(r.query.inicio, r.query.fin)

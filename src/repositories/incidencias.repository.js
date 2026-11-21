@@ -1,234 +1,39 @@
 'use strict';
-
-const pool = require('../config/db');
-
-const listar = async ({ limite, offset, q, tipoId, estado, servicioId }) => {
-  const condiciones = ['i.eliminado = FALSE'];
-  const valores = [];
-  let idx = 1;
-
-  if (q) {
-    condiciones.push(`(i.codigo ILIKE $${idx} OR i.descripcion ILIKE $${idx})`);
-    valores.push(`%${q}%`);
-    idx++;
-  }
-  if (tipoId) {
-    condiciones.push(`i.tipo_incidencia_id = $${idx}`);
-    valores.push(tipoId);
-    idx++;
-  }
-  if (estado) {
-    condiciones.push(`i.estado = $${idx}`);
-    valores.push(estado);
-    idx++;
-  }
-  if (servicioId) {
-    condiciones.push(`i.servicio_id = $${idx}`);
-    valores.push(servicioId);
-    idx++;
-  }
-
-  const where = condiciones.join(' AND ');
-
-  const {
-    rows: [{ total }],
-  } = await pool.query(
-    `SELECT COUNT(*) AS total FROM incidencias i WHERE ${where}`,
-    valores
-  );
-
-  const { rows } = await pool.query(
-    `SELECT i.responsable_id, i.sla_resolucion_min, i.sla_min, i.turno_id, responsable.nombres||' '||responsable.apellidos AS responsable, i.id, i.codigo, i.prioridad, i.estado, i.fecha_registro, i.fecha_atencion, i.fecha_cierre, i.descripcion, i.observacion,
-            i.tipo_incidencia_id, i.servicio_id, i.personal_id, i.registrado_por,
-            ti.nombre AS tipo,
-            s.nombre  AS servicio,
-            COALESCE(NULLIF(CONCAT(p.nombres, ' ', p.apellidos),' '), u.nombre) AS personal_registra
-     FROM incidencias i
-     JOIN tipos_incidencia ti ON i.tipo_incidencia_id = ti.id
-     JOIN servicios s ON i.servicio_id = s.id
-     LEFT JOIN personal p ON i.personal_id = p.id
-     LEFT JOIN personal responsable ON responsable.id = i.responsable_id
-     LEFT JOIN usuarios u ON i.registrado_por = u.id
-     WHERE ${where}
-     ORDER BY i.codigo ASC
-     LIMIT $${idx} OFFSET $${idx + 1}`,
-    [...valores, limite, offset]
-  );
-
-  return { filas: rows, total: parseInt(total, 10) };
+const pool=require('../config/db');
+const flujo=require('../services/incidencias-flujo.service');
+const plazo="COALESCE(i.plazo_resolucion_extendido,i.fecha_registro+make_interval(mins=>i.sla_resolucion_min))";
+async function condiciones(f={},u){
+ const a=u?await flujo.alcance(u):{sql:'TRUE',params:[]},valores=[...a.params],partes=['NOT i.eliminado',a.sql];
+ const agregar=(sql,v)=>{valores.push(v);partes.push(sql.replaceAll('?',()=>'$'+valores.length));};
+ if(f.q)agregar('(i.codigo ILIKE ? OR i.descripcion ILIKE ?)', '%'+f.q+'%');
+ if(f.tipoId)agregar('i.tipo_incidencia_id=?',f.tipoId);
+ if(f.estado)agregar('i.estado=?',f.estado);
+ if(f.servicioId)agregar('i.servicio_id=?',f.servicioId);
+ if(f.alerta==='vencidas')partes.push(`i.estado<>'cerrada' AND ${plazo}<NOW()`);
+ if(f.alerta==='ampliaciones')partes.push("EXISTS(SELECT 1 FROM incidencias_ampliaciones a WHERE a.incidencia_id=i.id AND a.estado='pendiente')");
+ return {where:partes.join(' AND '),valores};
+}
+const columnas=`i.*,ti.nombre tipo,s.nombre servicio,responsable.nombres||' '||responsable.apellidos responsable,u.nombre personal_registra,
+ ${plazo} plazo_resolucion,i.fecha_registro+make_interval(mins=>i.sla_resolucion_min) plazo_original,
+ (i.estado<>'cerrada' AND ${plazo}<NOW()) vencida,
+ (i.estado='abierta' AND i.fecha_registro+make_interval(mins=>i.sla_min)<NOW()) atencion_vencida,
+ EXISTS(SELECT 1 FROM incidencias_ampliaciones a WHERE a.incidencia_id=i.id AND a.estado='pendiente') ampliacion_pendiente`;
+const joins=`FROM incidencias i JOIN tipos_incidencia ti ON ti.id=i.tipo_incidencia_id JOIN servicios s ON s.id=i.servicio_id
+ LEFT JOIN personal responsable ON responsable.id=i.responsable_id LEFT JOIN usuarios u ON u.id=i.registrado_por`;
+exports.listar=async(f={},u)=>{
+ const {where,valores}=await condiciones(f,u);
+ const total=Number((await pool.query(`SELECT count(*) total FROM incidencias i WHERE ${where}`,valores)).rows[0].total);
+ const filas=(await pool.query(`SELECT ${columnas} ${joins} WHERE ${where}
+ ORDER BY ${f.ordenReciente?'':`(i.estado<>'cerrada' AND ${plazo}<NOW()) DESC NULLS LAST,ampliacion_pendiente DESC,`}i.fecha_registro DESC,i.id DESC
+ LIMIT $${valores.length+1} OFFSET $${valores.length+2}`,[...valores,f.limite||20,f.offset||0])).rows;
+ return {filas,total};
 };
-
-const obtenerResumen = async (f = {}) => {
-  const valores = [
-    f.servicioId || null,
-    f.estado || null,
-    f.tipoId || null,
-    f.q ? '%' + f.q + '%' : null,
-  ];
-  return (
-    await pool.query(
-      `SELECT COUNT(*) AS total,COUNT(*) FILTER(WHERE estado='abierta') AS abiertas,
- COUNT(*) FILTER(WHERE estado='en_atencion') AS en_atencion,COUNT(*) FILTER(WHERE estado='cerrada') AS cerradas
- FROM incidencias WHERE NOT eliminado AND ($1::int IS NULL OR servicio_id=$1) AND ($2::text IS NULL OR estado=$2)
- AND ($3::int IS NULL OR tipo_incidencia_id=$3) AND ($4::text IS NULL OR codigo ILIKE $4 OR descripcion ILIKE $4)`,
-      valores
-    )
-  ).rows[0];
-};
-
-const obtenerRecientes = async (limite = 5) => {
-  const { rows } = await pool.query(
-    `SELECT i.codigo, ti.nombre AS tipo, i.fecha_registro, i.prioridad, i.estado,
-            COALESCE(NULLIF(CONCAT(p.nombres, ' ', p.apellidos),' '), u.nombre) AS personal_registra
-     FROM incidencias i
-     JOIN tipos_incidencia ti ON i.tipo_incidencia_id = ti.id
-     LEFT JOIN personal p ON i.personal_id = p.id
-     LEFT JOIN personal responsable ON responsable.id = i.responsable_id
-     LEFT JOIN usuarios u ON i.registrado_por = u.id
-     WHERE i.eliminado = FALSE
-     ORDER BY i.fecha_registro DESC LIMIT $1`,
-    [limite]
-  );
-  return rows;
-};
-
-const obtenerPorId = async (id) => {
-  const { rows } = await pool.query(
-    `SELECT i.*, ti.nombre AS tipo, s.nombre AS servicio,
-            COALESCE(NULLIF(CONCAT(p.nombres, ' ', p.apellidos),' '), u.nombre) AS personal_registra
-     FROM incidencias i
-     JOIN tipos_incidencia ti ON i.tipo_incidencia_id = ti.id
-     JOIN servicios s ON i.servicio_id = s.id
-     LEFT JOIN personal p ON i.personal_id = p.id
-     LEFT JOIN personal responsable ON responsable.id = i.responsable_id
-     LEFT JOIN usuarios u ON i.registrado_por = u.id
-     WHERE i.id = $1 AND i.eliminado = FALSE`,
-    [id]
-  );
-  return rows[0] || null;
-};
-
-const siguienteCodigo = async () => {
-  const { rows } = await pool.query("SELECT nextval('seq_incidencias') AS num");
-  return `INC-${String(rows[0].num).padStart(4, '0')}`;
-};
-
-const crear = async ({
-  codigo,
-  tipoIncidenciaId,
-  servicioId,
-  personalId,
-  descripcion,
-  prioridad,
-  registradoPor,
-}) => {
-  const { rows } = await pool.query(
-    `INSERT INTO incidencias (codigo, tipo_incidencia_id, servicio_id, personal_id, descripcion, prioridad, registrado_por)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [
-      codigo,
-      tipoIncidenciaId,
-      servicioId,
-      personalId || null,
-      descripcion,
-      prioridad,
-      registradoPor,
-    ]
-  );
-  return rows[0];
-};
-
-const actualizar = async (
-  id,
-  { tipoIncidenciaId, servicioId, personalId, descripcion, prioridad, estado }
-) => {
-  const { rows } = await pool.query(
-    `UPDATE incidencias
-     SET tipo_incidencia_id = $1, servicio_id = $2, personal_id = COALESCE($3, personal_id),
-         descripcion = $4, prioridad = $5, estado = $6, actualizado_en = NOW()
-     WHERE id = $7 AND eliminado = FALSE RETURNING *`,
-    [
-      tipoIncidenciaId,
-      servicioId,
-      personalId || null,
-      descripcion,
-      prioridad,
-      estado,
-      id,
-    ]
-  );
-  return rows[0] || null;
-};
-
-const cambiarEstado = async (id, estado, observacion) => {
-  const ahora = new Date();
-  const fechaAtencion = estado === 'en_atencion' ? ahora : undefined;
-  const fechaCierre = estado === 'cerrada' ? ahora : undefined;
-
-  let sql = `UPDATE incidencias SET estado = $1, actualizado_en = NOW()`;
-  const valores = [estado];
-  let idx = 2;
-
-  if (fechaAtencion) {
-    sql += `, fecha_atencion = COALESCE(fecha_atencion, ${idx})`;
-    valores.push(ahora);
-    idx++;
-  }
-  if (fechaCierre) {
-    sql += `, fecha_cierre = COALESCE(fecha_cierre, ${idx})`;
-    valores.push(ahora);
-    idx++;
-  }
-  if (estado !== 'cerrada') sql += ', fecha_cierre = NULL';
-  if (observacion !== undefined && observacion !== null) {
-    sql += `, observacion = $${idx}`;
-    valores.push(observacion.trim());
-    idx++;
-  }
-
-  sql += ` WHERE id = $${idx} AND eliminado = FALSE RETURNING *`;
-  valores.push(id);
-
-  const { rows } = await pool.query(sql, valores);
-  return rows[0] || null;
-};
-
-const registrarObservacion = async (id, observacion) => {
-  const { rows } = await pool.query(
-    `UPDATE incidencias SET observacion = $1, actualizado_en = NOW()
-     WHERE id = $2 AND eliminado = FALSE RETURNING *`,
-    [observacion ? observacion.trim() : null, id]
-  );
-  return rows[0] || null;
-};
-
-const eliminar = async (id, eliminadoPor) => {
-  const { rows } = await pool.query(
-    `UPDATE incidencias
-     SET eliminado = TRUE, eliminado_en = NOW(), eliminado_por = $1, actualizado_en = NOW()
-     WHERE id = $2 AND eliminado = FALSE RETURNING id`,
-    [eliminadoPor, id]
-  );
-  return rows[0] || null;
-};
-
-const listarTipos = async () => {
-  const { rows } = await pool.query(
-    'SELECT id, nombre FROM tipos_incidencia WHERE eliminado = FALSE ORDER BY nombre'
-  );
-  return rows;
-};
-
-module.exports = {
-  listar,
-  obtenerResumen,
-  obtenerRecientes,
-  obtenerPorId,
-  siguienteCodigo,
-  crear,
-  actualizar,
-  cambiarEstado,
-  registrarObservacion,
-  eliminar,
-  listarTipos,
-};
+exports.obtenerResumen=async(f={},u)=>{const {where,valores}=await condiciones(f,u);return (await pool.query(`SELECT COUNT(*) total,
+ COUNT(*) FILTER(WHERE i.estado='abierta') abiertas,COUNT(*) FILTER(WHERE i.estado='en_atencion') en_atencion,COUNT(*) FILTER(WHERE i.estado='cerrada') cerradas,
+ COUNT(*) FILTER(WHERE i.estado<>'cerrada' AND ${plazo}<NOW()) vencidas,
+ COUNT(*) FILTER(WHERE EXISTS(SELECT 1 FROM incidencias_ampliaciones a WHERE a.incidencia_id=i.id AND a.estado='pendiente')) ampliaciones
+ FROM incidencias i WHERE ${where}`,valores)).rows[0];};
+exports.obtenerRecientes=async(limite=5,u)=>(await exports.listar({limite,ordenReciente:true},u)).filas;
+exports.obtenerPorId=async(id)=>(await pool.query(`SELECT ${columnas} ${joins} WHERE i.id=$1 AND NOT i.eliminado`,[id])).rows[0]||null;
+exports.eliminar=async(id,eliminadoPor)=>(await pool.query('UPDATE incidencias SET eliminado=TRUE,eliminado_en=NOW(),eliminado_por=$2,actualizado_en=NOW() WHERE id=$1 AND NOT eliminado RETURNING id',[id,eliminadoPor])).rows[0];
+exports.listarTipos=async()=>(await pool.query('SELECT id,nombre FROM tipos_incidencia WHERE NOT eliminado ORDER BY nombre')).rows;

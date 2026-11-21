@@ -102,7 +102,7 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'bi_lector') THEN
     BEGIN
-      CREATE ROLE bi_lector LOGIN PASSWORD 'bi_lector_pass';
+      CREATE ROLE bi_lector NOLOGIN;
     EXCEPTION WHEN OTHERS THEN
       RAISE NOTICE 'No se pudo crear el rol bi_lector: %', SQLERRM;
     END;
@@ -187,3 +187,10 @@ DO $$ BEGIN
    GRANT SELECT ON vw_bi_kpis_operativos TO bi_lector;
  END IF;
 END $$;
+
+-- Las vistas anteriores se conservan por compatibilidad; Power BI solo lee dw.
+DO $$ BEGIN IF to_regclass('dw.dim_fecha') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname='bi_lector') THEN
+ REVOKE SELECT ON ALL TABLES IN SCHEMA public,bi FROM bi_lector;
+ GRANT USAGE ON SCHEMA dw TO bi_lector;
+ GRANT SELECT ON ALL TABLES IN SCHEMA dw TO bi_lector;
+END IF; END $$;

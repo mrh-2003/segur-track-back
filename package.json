@@ -12,7 +12,12 @@
     "db:migrate": "node database/migrar.cjs",
     "db:demo": "node database/seed-demo.cjs",
     "test:kpis:integration": "node test/kpis-integracion.cjs",
-    "db:demo:kpis": "node database/completar-demo-kpis.cjs"
+    "db:demo:kpis": "node database/completar-demo-kpis.cjs",
+    "bi:sync": "node database/sincronizar-bi.cjs",
+    "test:bi:integration": "node test/warehouse-integracion.cjs",
+    "db:demo:bi": "node database/completar-demo-bi.cjs",
+    "test:incidencias:integration": "node test/incidencias-flujo-integracion.cjs",
+    "db:demo:operativa": "node database/actualizar-demo-operativa.cjs"
   },
   "keywords": [],
   "author": "",

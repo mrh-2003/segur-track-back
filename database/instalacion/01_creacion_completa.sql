@@ -1,4 +1,4 @@
--- Segur Track · instalación completa · generado 2026-11-18T23:13:15.194Z
+-- Segur Track · instalación completa · generado 2026-11-21T20:18:37.772Z
 -- PostgreSQL. Ejecutar con psql; detenerse ante cualquier error.
 \encoding UTF8
 \set ON_ERROR_STOP on
@@ -17,7 +17,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 --
 
 
--- Dumped from database version 18.7 (a21afb5)
+-- Dumped from database version 18.7 (84da7d8)
 -- Dumped by pg_dump version 18.6
 
 SET statement_timeout = 0;
@@ -37,6 +37,20 @@ SET row_security = off;
 --
 
 CREATE SCHEMA bi;
+
+
+--
+-- Name: dw; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA dw;
+
+
+--
+-- Name: etl; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA etl;
 
 
 --
@@ -71,6 +85,123 @@ BEGIN
  INSERT INTO bi.hecho_incidencia SELECT i.id,i.servicio_id,(i.fecha_registro AT TIME ZONE 'America/Lima')::date,i.prioridad,i.estado,i.fecha_registro,i.fecha_atencion,i.fecha_cierre,i.sla_min,i.responsable_id FROM incidencias i JOIN servicios s ON s.id=i.servicio_id WHERE NOT i.eliminado AND NOT s.eliminado;
  INSERT INTO bi.cargas(turnos,incidencias) SELECT (SELECT COUNT(*) FROM bi.hecho_turno),(SELECT COUNT(*) FROM bi.hecho_incidencia);
 END $$;
+
+
+--
+-- Name: cargar_dw(bigint, timestamp with time zone); Type: FUNCTION; Schema: etl; Owner: -
+--
+
+CREATE FUNCTION etl.cargar_dw(p_carga bigint, p_corte timestamp with time zone) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE conteos JSONB;
+BEGIN
+ PERFORM etl.dimension('dim_cliente',(SELECT jsonb_agg(jsonb_build_object('origen_id',id,'nombre',nombre,'atributos',jsonb_build_object('eliminado',eliminado))) FROM public.clientes),p_corte);
+ PERFORM etl.dimension('dim_sede',(SELECT jsonb_agg(jsonb_build_object('origen_id',id,'nombre',nombre,'atributos',jsonb_build_object('direccion',direccion,'eliminado',eliminado))) FROM public.sedes),p_corte);
+ PERFORM etl.dimension('dim_personal',(SELECT jsonb_agg(jsonb_build_object('origen_id',id,'nombre',nombres||' '||apellidos,'atributos',jsonb_build_object('cargo',cargo,'estado',estado,'eliminado',eliminado))) FROM public.personal),p_corte);
+ PERFORM etl.dimension('dim_supervisor',(SELECT jsonb_agg(jsonb_build_object('origen_id',id,'nombre',nombres||' '||apellidos,'atributos',jsonb_build_object('estado',estado,'eliminado',eliminado))) FROM public.personal),p_corte);
+ PERFORM etl.dimension('dim_servicio',(SELECT jsonb_agg(jsonb_build_object('origen_id',id,'nombre',nombre,'atributos',jsonb_build_object('estado',estado,'fecha_inicio',fecha_inicio,'fecha_fin',fecha_fin,'cliente_id',cliente_id,'sede_id',sede_id,'supervisor_id',supervisor_id,'eliminado',eliminado))) FROM public.servicios),p_corte);
+ UPDATE dw.dim_servicio SET estado=atributos->>'estado',fecha_inicio=(atributos->>'fecha_inicio')::date,fecha_fin=(atributos->>'fecha_fin')::date,
+ cliente_origen_id=(atributos->>'cliente_id')::int,sede_origen_id=(atributos->>'sede_id')::int,supervisor_origen_id=(atributos->>'supervisor_id')::int;
+ UPDATE dw.dim_servicio d SET fecha_inicio=s.fecha_inicio,fecha_fin=s.fecha_fin FROM public.servicios s WHERE d.origen_id=s.id;
+ INSERT INTO dw.dim_tipo_incidencia(origen_id,nombre) SELECT id,nombre FROM public.tipos_incidencia ON CONFLICT(origen_id) DO UPDATE SET nombre=EXCLUDED.nombre;
+ INSERT INTO dw.dim_indicador(codigo,nombre,unidad,sentido,formula) SELECT codigo,nombre,unidad,sentido,formula FROM public.indicadores_bi ON CONFLICT(codigo) DO UPDATE SET nombre=EXCLUDED.nombre,unidad=EXCLUDED.unidad,sentido=EXCLUDED.sentido,formula=EXCLUDED.formula;
+ INSERT INTO dw.dim_fecha(fecha_sk,fecha,anio,mes,dia,trimestre,semana_iso,mes_nombre)
+ SELECT to_char(d,'YYYYMMDD')::int,d::date,EXTRACT(YEAR FROM d),EXTRACT(MONTH FROM d),EXTRACT(DAY FROM d),EXTRACT(QUARTER FROM d),EXTRACT(WEEK FROM d),to_char(d,'YYYY-MM')
+ FROM generate_series(LEAST(COALESCE((SELECT MIN(fecha) FROM public.turnos),CURRENT_DATE),COALESCE((SELECT MIN(fecha_inicio) FROM public.servicios),CURRENT_DATE),CURRENT_DATE-INTERVAL '2 years')::date,
+ GREATEST(COALESCE((SELECT MAX(fecha) FROM public.turnos),CURRENT_DATE),CURRENT_DATE+INTERVAL '2 years')::date,INTERVAL '1 day') d ON CONFLICT(fecha_sk) DO NOTHING;
+ -- Fechas excepcionales de incidencias y metas también conservan una clave válida.
+ INSERT INTO dw.dim_fecha(fecha_sk,fecha,anio,mes,dia,trimestre,semana_iso,mes_nombre)
+ SELECT DISTINCT to_char(d,'YYYYMMDD')::int,d,EXTRACT(YEAR FROM d),EXTRACT(MONTH FROM d),EXTRACT(DAY FROM d),EXTRACT(QUARTER FROM d),EXTRACT(WEEK FROM d),to_char(d,'YYYY-MM') FROM(
+ SELECT (fecha_registro AT TIME ZONE 'America/Lima')::date d FROM public.incidencias UNION SELECT (fecha_atencion AT TIME ZONE 'America/Lima')::date FROM public.incidencias UNION SELECT (fecha_cierre AT TIME ZONE 'America/Lima')::date FROM public.incidencias UNION SELECT vigente_desde FROM public.metas_bi UNION SELECT vigente_hasta FROM public.metas_bi) f WHERE d IS NOT NULL ON CONFLICT(fecha_sk) DO NOTHING;
+ CREATE TEMP TABLE _dw_turnos ON COMMIT DROP AS
+ SELECT t.*,ds.sk servicio_sk,COALESCE(dc.sk,0) cliente_sk,COALESCE(de.sk,0) sede_sk,COALESCE(du.sk,0) supervisor_sk,COALESCE(dp.sk,0) personal_sk,to_char(t.fecha,'YYYYMMDD')::int fecha_sk
+ FROM public.vw_operacion_turnos t JOIN public.servicios s ON s.id=t.servicio_id AND NOT s.eliminado
+ JOIN LATERAL(SELECT * FROM dw.dim_servicio WHERE origen_id=t.servicio_id AND vigente_desde<=t.inicio_programado AND t.inicio_programado<vigente_hasta ORDER BY vigente_desde DESC LIMIT 1)ds ON TRUE
+ LEFT JOIN dw.dim_cliente dc ON dc.origen_id=ds.cliente_origen_id AND dc.vigente_desde<=t.inicio_programado AND t.inicio_programado<dc.vigente_hasta
+ LEFT JOIN dw.dim_sede de ON de.origen_id=ds.sede_origen_id AND de.vigente_desde<=t.inicio_programado AND t.inicio_programado<de.vigente_hasta
+ LEFT JOIN dw.dim_supervisor du ON du.origen_id=ds.supervisor_origen_id AND du.vigente_desde<=t.inicio_programado AND t.inicio_programado<du.vigente_hasta
+ LEFT JOIN dw.dim_personal dp ON dp.origen_id=t.personal_id AND dp.vigente_desde<=t.inicio_programado AND t.inicio_programado<dp.vigente_hasta;
+ TRUNCATE dw.fact_turno,dw.fact_obligacion,dw.fact_ronda,dw.fact_incidencia,dw.fact_servicio_diario,dw.fact_meta;
+ INSERT INTO dw.fact_turno(turno_origen_id,servicio_sk,cliente_sk,sede_sk,supervisor_sk,fecha_sk,personal_sk,inicio_programado,fin_programado,ingreso_real,salida_real,tolerancia_min,estado,programados,exigibles,cubiertos,descubiertos,asignados_validados,ausentes,asistencias,tardanzas,validaciones_pendientes,carga_id)
+ SELECT id,servicio_sk,cliente_sk,sede_sk,supervisor_sk,fecha_sk,personal_sk,inicio_programado,fin_programado,ingreso_real,salida_real,tolerancia_min,estado,1,
+ (fin_programado<=p_corte)::int,
+ (fin_programado<=p_corte AND asistencia_validada AND ingreso_real IS NOT NULL AND ingreso_real<fin_programado)::int,
+ (fin_programado<=p_corte AND NOT(asistencia_validada AND ingreso_real IS NOT NULL AND ingreso_real<fin_programado))::int,
+ (fin_programado<=p_corte AND personal_id IS NOT NULL AND asistencia_validada)::int,
+ (fin_programado<=p_corte AND personal_id IS NOT NULL AND asistencia_validada AND ingreso_real IS NULL)::int,
+ (fin_programado<=p_corte AND asistencia_validada AND ingreso_real IS NOT NULL AND ingreso_real<fin_programado)::int,
+ (fin_programado<=p_corte AND asistencia_validada AND ingreso_real IS NOT NULL AND ingreso_real<fin_programado AND ingreso_real>inicio_programado+make_interval(mins=>tolerancia_min))::int,
+ (fin_programado<=p_corte AND personal_id IS NOT NULL AND NOT asistencia_validada)::int,p_carga FROM _dw_turnos;
+ INSERT INTO dw.fact_obligacion(obligacion_origen_id,turno_origen_id,servicio_sk,cliente_sk,sede_sk,supervisor_sk,fecha_sk,tipo_sk,fecha_limite,primera_entrega,ultima_entrega,estado_revision,programadas,exigibles,completadas,pendientes_vencidas,oportunas,revisados,observados,carga_id)
+ SELECT o.id,t.id,t.servicio_sk,t.cliente_sk,t.sede_sk,t.supervisor_sk,t.fecha_sk,CASE o.tipo WHEN 'actividad' THEN 1 ELSE 2 END,o.fecha_limite,COALESCE(o.primera_entrega_en,o.fecha_completada),o.fecha_completada,o.estado_revision,1,
+ (o.fecha_limite<=p_corte)::int,COALESCE((o.fecha_limite<=p_corte AND COALESCE(o.primera_entrega_en,o.fecha_completada)<=p_corte)::int,0),
+ (o.fecha_limite<=p_corte AND (COALESCE(o.primera_entrega_en,o.fecha_completada) IS NULL OR COALESCE(o.primera_entrega_en,o.fecha_completada)>p_corte))::int,
+ COALESCE((o.fecha_limite<=p_corte AND COALESCE(o.primera_entrega_en,o.fecha_completada)<=o.fecha_limite AND COALESCE(o.primera_entrega_en,o.fecha_completada)<=p_corte)::int,0),
+ (EXISTS(SELECT 1 FROM public.revisiones_reportes r WHERE r.reporte_id=o.id AND r.revisado_en<=p_corte))::int,
+ (EXISTS(SELECT 1 FROM public.revisiones_reportes r WHERE r.reporte_id=o.id AND r.estado='observado' AND r.revisado_en<=p_corte))::int,p_carga
+ FROM public.obligaciones_operativas o JOIN _dw_turnos t ON t.id=o.turno_id WHERE NOT o.eliminado;
+ INSERT INTO dw.fact_ronda(ronda_origen_id,turno_origen_id,servicio_sk,cliente_sk,sede_sk,supervisor_sk,fecha_sk,fecha_programada,fecha_completada,programadas,exigibles,completadas,carga_id)
+ SELECT r.id,t.id,t.servicio_sk,t.cliente_sk,t.sede_sk,t.supervisor_sk,t.fecha_sk,r.fecha_programada,r.fecha_completada,1,(r.fecha_programada<=p_corte)::int,
+ COALESCE((r.fecha_programada<=p_corte AND r.estado='completada' AND r.fecha_completada<=p_corte)::int,0),p_carga FROM public.rondas r JOIN _dw_turnos t ON t.id=r.turno_id WHERE NOT r.eliminado;
+ INSERT INTO dw.fact_incidencia(incidencia_origen_id,codigo,servicio_sk,cliente_sk,sede_sk,supervisor_sk,fecha_sk,tipo_sk,fecha_atencion_sk,fecha_cierre_sk,fecha_registro,fecha_atencion,fecha_cierre,limite_atencion,limite_resolucion,prioridad,estado,cantidad,abiertas,atendidas,minutos_respuesta,resolucion_exigible,cerradas_en_plazo,atencion_exigible,atendidas_en_plazo,plazos_pendientes,carga_id)
+ SELECT i.id,i.codigo,ds.sk,COALESCE(dc.sk,0),COALESCE(de.sk,0),COALESCE(du.sk,0),to_char(i.fecha_registro AT TIME ZONE 'America/Lima','YYYYMMDD')::int,COALESCE(dt.sk,0),
+ COALESCE(to_char(i.fecha_atencion AT TIME ZONE 'America/Lima','YYYYMMDD')::int,0),COALESCE(to_char(i.fecha_cierre AT TIME ZONE 'America/Lima','YYYYMMDD')::int,0),i.fecha_registro,i.fecha_atencion,i.fecha_cierre,i.fecha_registro+make_interval(mins=>i.sla_min),COALESCE(i.plazo_resolucion_extendido,i.fecha_registro+make_interval(mins=>i.sla_resolucion_min)),i.prioridad,i.estado,1,
+ (NOT(i.estado='cerrada' AND i.fecha_cierre IS NOT NULL AND i.fecha_cierre<=p_corte))::int,
+ COALESCE((i.fecha_atencion BETWEEN i.fecha_registro AND p_corte)::int,0),CASE WHEN i.fecha_atencion BETWEEN i.fecha_registro AND p_corte THEN EXTRACT(EPOCH FROM i.fecha_atencion-i.fecha_registro)/60 END,
+ COALESCE((i.sla_resolucion_min>0 AND (i.fecha_cierre<=p_corte OR COALESCE(i.plazo_resolucion_extendido,i.fecha_registro+make_interval(mins=>i.sla_resolucion_min))<=p_corte))::int,0),
+ COALESCE((i.estado='cerrada' AND i.fecha_cierre<=p_corte AND i.fecha_cierre<=COALESCE(i.plazo_resolucion_extendido,i.fecha_registro+make_interval(mins=>i.sla_resolucion_min)))::int,0),
+ COALESCE((i.sla_min>0 AND (i.fecha_atencion<=p_corte OR i.fecha_registro+make_interval(mins=>i.sla_min)<=p_corte))::int,0),
+ COALESCE((i.fecha_atencion BETWEEN i.fecha_registro AND LEAST(p_corte,i.fecha_registro+make_interval(mins=>i.sla_min)))::int,0),
+ (i.sla_min IS NULL OR i.sla_resolucion_min IS NULL)::int,p_carga
+ FROM public.incidencias i JOIN public.servicios s ON s.id=i.servicio_id AND NOT s.eliminado
+ JOIN LATERAL(SELECT * FROM dw.dim_servicio WHERE origen_id=i.servicio_id AND vigente_desde<=i.fecha_registro AND i.fecha_registro<vigente_hasta ORDER BY vigente_desde DESC LIMIT 1)ds ON TRUE
+ LEFT JOIN dw.dim_cliente dc ON dc.origen_id=ds.cliente_origen_id AND dc.vigente_desde<=i.fecha_registro AND i.fecha_registro<dc.vigente_hasta
+ LEFT JOIN dw.dim_sede de ON de.origen_id=ds.sede_origen_id AND de.vigente_desde<=i.fecha_registro AND i.fecha_registro<de.vigente_hasta
+ LEFT JOIN dw.dim_supervisor du ON du.origen_id=ds.supervisor_origen_id AND du.vigente_desde<=i.fecha_registro AND i.fecha_registro<du.vigente_hasta
+ LEFT JOIN dw.dim_tipo_incidencia dt ON dt.origen_id=i.tipo_incidencia_id WHERE NOT i.eliminado AND i.fecha_registro<=p_corte;
+
+ UPDATE dw.fact_incidencia f SET
+   limite_resolucion_original=i.fecha_registro+make_interval(mins=>i.sla_resolucion_min),
+   ampliaciones_aprobadas=(SELECT COUNT(*) FROM public.incidencias_ampliaciones a WHERE a.incidencia_id=i.id AND a.estado='aprobada' AND a.decidido_en<=p_corte),
+   minutos_ampliados=CASE WHEN i.plazo_resolucion_extendido IS NOT NULL THEN EXTRACT(EPOCH FROM (i.plazo_resolucion_extendido-i.fecha_registro))/60-i.sla_resolucion_min ELSE 0 END,
+   ampliacion_pendiente=(EXISTS(SELECT 1 FROM public.incidencias_ampliaciones a WHERE a.incidencia_id=i.id AND a.estado='pendiente'))::int
+ FROM public.incidencias i WHERE i.id=f.incidencia_origen_id;
+ INSERT INTO dw.fact_servicio_diario
+ (servicio_origen_id,servicio_sk,cliente_sk,sede_sk,supervisor_sk,fecha_sk,activo,carga_id)
+ SELECT s.id,ds.sk,COALESCE(dc.sk,0),COALESCE(de.sk,0),COALESCE(du.sk,0),to_char(f.d,'YYYYMMDD')::int,1,p_carga
+ FROM public.servicios s CROSS JOIN LATERAL generate_series(s.fecha_inicio,LEAST(COALESCE(s.fecha_fin,CASE WHEN s.estado='finalizado' THEN (s.actualizado_en AT TIME ZONE 'America/Lima')::date ELSE (p_corte AT TIME ZONE 'America/Lima')::date END),(p_corte AT TIME ZONE 'America/Lima')::date),INTERVAL '1 day') f(d)
+ JOIN LATERAL(SELECT * FROM dw.dim_servicio WHERE origen_id=s.id AND vigente_desde<=LEAST((f.d::date+TIME '23:59:59') AT TIME ZONE 'America/Lima',p_corte) AND LEAST((f.d::date+TIME '23:59:59') AT TIME ZONE 'America/Lima',p_corte)<vigente_hasta ORDER BY vigente_desde DESC LIMIT 1)ds ON TRUE
+ LEFT JOIN dw.dim_cliente dc ON dc.origen_id=ds.cliente_origen_id AND dc.vigente_desde<=LEAST((f.d::date+TIME '23:59:59') AT TIME ZONE 'America/Lima',p_corte) AND LEAST((f.d::date+TIME '23:59:59') AT TIME ZONE 'America/Lima',p_corte)<dc.vigente_hasta
+ LEFT JOIN dw.dim_sede de ON de.origen_id=ds.sede_origen_id AND de.vigente_desde<=LEAST((f.d::date+TIME '23:59:59') AT TIME ZONE 'America/Lima',p_corte) AND LEAST((f.d::date+TIME '23:59:59') AT TIME ZONE 'America/Lima',p_corte)<de.vigente_hasta
+ LEFT JOIN dw.dim_supervisor du ON du.origen_id=ds.supervisor_origen_id AND du.vigente_desde<=LEAST((f.d::date+TIME '23:59:59') AT TIME ZONE 'America/Lima',p_corte) AND LEAST((f.d::date+TIME '23:59:59') AT TIME ZONE 'America/Lima',p_corte)<du.vigente_hasta
+ WHERE NOT s.eliminado;
+ INSERT INTO dw.fact_meta(indicador_sk,desde_sk,hasta_sk,vigente_desde,vigente_hasta,valor,carga_id)
+ SELECT d.sk,to_char(m.vigente_desde,'YYYYMMDD')::int,COALESCE(to_char(m.vigente_hasta,'YYYYMMDD')::int,0),m.vigente_desde,m.vigente_hasta,m.valor,p_carga FROM public.metas_bi m JOIN dw.dim_indicador d ON d.codigo=m.codigo;
+ SELECT jsonb_build_object('turnos',(SELECT COUNT(*) FROM dw.fact_turno),'obligaciones',(SELECT COUNT(*) FROM dw.fact_obligacion),'rondas',(SELECT COUNT(*) FROM dw.fact_ronda),'incidencias',(SELECT COUNT(*) FROM dw.fact_incidencia),'servicios_dia',(SELECT COUNT(*) FROM dw.fact_servicio_diario)) INTO conteos;
+ UPDATE etl.estado SET ultima_carga_en=p_corte,ultimo_id=p_carga WHERE id=1;
+ RETURN conteos;
+END $$;
+
+
+--
+-- Name: dimension(text, jsonb, timestamp with time zone); Type: FUNCTION; Schema: etl; Owner: -
+--
+
+CREATE FUNCTION etl.dimension(tabla text, registros jsonb, corte timestamp with time zone) RETURNS void
+    LANGUAGE plpgsql
+    AS $_$
+BEGIN
+ IF tabla NOT IN ('dim_cliente','dim_sede','dim_supervisor','dim_personal','dim_servicio') THEN RAISE EXCEPTION 'Dimensión inválida'; END IF;
+ EXECUTE format($q$WITH s AS(SELECT * FROM jsonb_to_recordset($1) x(origen_id int,nombre text,atributos jsonb))
+ UPDATE dw.%I d SET actual=FALSE,vigente_hasta=$2 FROM s WHERE d.origen_id=s.origen_id AND d.actual
+ AND d.huella<>md5(jsonb_build_object('nombre',s.nombre,'atributos',s.atributos)::text)$q$,tabla) USING COALESCE(registros,'[]'),corte;
+ EXECUTE format($q$INSERT INTO dw.%I(origen_id,nombre,atributos,huella,vigente_desde)
+ SELECT s.origen_id,s.nombre,s.atributos,md5(jsonb_build_object('nombre',s.nombre,'atributos',s.atributos)::text),
+ CASE WHEN EXISTS(SELECT 1 FROM dw.%I d WHERE d.origen_id=s.origen_id) THEN $2 ELSE '-infinity'::timestamptz END
+ FROM jsonb_to_recordset($1) s(origen_id int,nombre text,atributos jsonb)
+ WHERE NOT EXISTS(SELECT 1 FROM dw.%I d WHERE d.origen_id=s.origen_id AND d.actual)$q$,tabla,tabla,tabla) USING COALESCE(registros,'[]'),corte;
+END $_$;
 
 
 --
@@ -327,6 +458,601 @@ CREATE TABLE bi.hecho_turno (
     estado text,
     puesto text,
     fuente jsonb NOT NULL
+);
+
+
+--
+-- Name: dim_cliente; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.dim_cliente (
+    sk bigint NOT NULL,
+    origen_id integer NOT NULL,
+    nombre text NOT NULL,
+    atributos jsonb DEFAULT '{}'::jsonb NOT NULL,
+    huella text NOT NULL,
+    vigente_desde timestamp with time zone DEFAULT '-infinity'::timestamp with time zone NOT NULL,
+    vigente_hasta timestamp with time zone DEFAULT 'infinity'::timestamp with time zone NOT NULL,
+    actual boolean DEFAULT true NOT NULL,
+    CONSTRAINT dim_cliente_check CHECK ((vigente_desde < vigente_hasta))
+);
+
+
+--
+-- Name: dim_cliente_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.dim_cliente_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: dim_cliente_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.dim_cliente_sk_seq OWNED BY dw.dim_cliente.sk;
+
+
+--
+-- Name: dim_fecha; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.dim_fecha (
+    fecha_sk integer NOT NULL,
+    fecha date,
+    anio integer,
+    mes integer,
+    dia integer,
+    trimestre integer,
+    semana_iso integer,
+    mes_nombre text
+);
+
+
+--
+-- Name: dim_indicador; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.dim_indicador (
+    sk bigint NOT NULL,
+    codigo text NOT NULL,
+    nombre text NOT NULL,
+    unidad text NOT NULL,
+    sentido text NOT NULL,
+    formula text NOT NULL
+);
+
+
+--
+-- Name: dim_indicador_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.dim_indicador_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: dim_indicador_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.dim_indicador_sk_seq OWNED BY dw.dim_indicador.sk;
+
+
+--
+-- Name: dim_personal; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.dim_personal (
+    sk bigint NOT NULL,
+    origen_id integer NOT NULL,
+    nombre text NOT NULL,
+    atributos jsonb DEFAULT '{}'::jsonb NOT NULL,
+    huella text NOT NULL,
+    vigente_desde timestamp with time zone DEFAULT '-infinity'::timestamp with time zone NOT NULL,
+    vigente_hasta timestamp with time zone DEFAULT 'infinity'::timestamp with time zone NOT NULL,
+    actual boolean DEFAULT true NOT NULL,
+    CONSTRAINT dim_personal_check CHECK ((vigente_desde < vigente_hasta))
+);
+
+
+--
+-- Name: dim_personal_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.dim_personal_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: dim_personal_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.dim_personal_sk_seq OWNED BY dw.dim_personal.sk;
+
+
+--
+-- Name: dim_sede; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.dim_sede (
+    sk bigint NOT NULL,
+    origen_id integer NOT NULL,
+    nombre text NOT NULL,
+    atributos jsonb DEFAULT '{}'::jsonb NOT NULL,
+    huella text NOT NULL,
+    vigente_desde timestamp with time zone DEFAULT '-infinity'::timestamp with time zone NOT NULL,
+    vigente_hasta timestamp with time zone DEFAULT 'infinity'::timestamp with time zone NOT NULL,
+    actual boolean DEFAULT true NOT NULL,
+    CONSTRAINT dim_sede_check CHECK ((vigente_desde < vigente_hasta))
+);
+
+
+--
+-- Name: dim_sede_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.dim_sede_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: dim_sede_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.dim_sede_sk_seq OWNED BY dw.dim_sede.sk;
+
+
+--
+-- Name: dim_servicio; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.dim_servicio (
+    sk bigint NOT NULL,
+    origen_id integer NOT NULL,
+    nombre text NOT NULL,
+    atributos jsonb DEFAULT '{}'::jsonb NOT NULL,
+    huella text NOT NULL,
+    vigente_desde timestamp with time zone DEFAULT '-infinity'::timestamp with time zone NOT NULL,
+    vigente_hasta timestamp with time zone DEFAULT 'infinity'::timestamp with time zone NOT NULL,
+    actual boolean DEFAULT true NOT NULL,
+    estado text,
+    fecha_inicio date,
+    fecha_fin date,
+    cliente_origen_id integer,
+    sede_origen_id integer,
+    supervisor_origen_id integer,
+    CONSTRAINT dim_servicio_check CHECK ((vigente_desde < vigente_hasta))
+);
+
+
+--
+-- Name: dim_servicio_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.dim_servicio_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: dim_servicio_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.dim_servicio_sk_seq OWNED BY dw.dim_servicio.sk;
+
+
+--
+-- Name: dim_supervisor; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.dim_supervisor (
+    sk bigint NOT NULL,
+    origen_id integer NOT NULL,
+    nombre text NOT NULL,
+    atributos jsonb DEFAULT '{}'::jsonb NOT NULL,
+    huella text NOT NULL,
+    vigente_desde timestamp with time zone DEFAULT '-infinity'::timestamp with time zone NOT NULL,
+    vigente_hasta timestamp with time zone DEFAULT 'infinity'::timestamp with time zone NOT NULL,
+    actual boolean DEFAULT true NOT NULL,
+    CONSTRAINT dim_supervisor_check CHECK ((vigente_desde < vigente_hasta))
+);
+
+
+--
+-- Name: dim_supervisor_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.dim_supervisor_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: dim_supervisor_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.dim_supervisor_sk_seq OWNED BY dw.dim_supervisor.sk;
+
+
+--
+-- Name: dim_tipo_incidencia; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.dim_tipo_incidencia (
+    sk bigint NOT NULL,
+    origen_id integer NOT NULL,
+    nombre text NOT NULL
+);
+
+
+--
+-- Name: dim_tipo_incidencia_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.dim_tipo_incidencia_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: dim_tipo_incidencia_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.dim_tipo_incidencia_sk_seq OWNED BY dw.dim_tipo_incidencia.sk;
+
+
+--
+-- Name: dim_tipo_obligacion; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.dim_tipo_obligacion (
+    sk integer NOT NULL,
+    nombre text NOT NULL
+);
+
+
+--
+-- Name: fact_incidencia; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.fact_incidencia (
+    sk bigint NOT NULL,
+    incidencia_origen_id integer NOT NULL,
+    codigo text,
+    servicio_sk bigint NOT NULL,
+    cliente_sk bigint NOT NULL,
+    sede_sk bigint NOT NULL,
+    supervisor_sk bigint NOT NULL,
+    fecha_sk integer NOT NULL,
+    tipo_sk bigint NOT NULL,
+    fecha_atencion_sk integer NOT NULL,
+    fecha_cierre_sk integer NOT NULL,
+    fecha_registro timestamp with time zone,
+    fecha_atencion timestamp with time zone,
+    fecha_cierre timestamp with time zone,
+    limite_atencion timestamp with time zone,
+    limite_resolucion timestamp with time zone,
+    prioridad text,
+    estado text,
+    cantidad integer NOT NULL,
+    abiertas integer NOT NULL,
+    atendidas integer NOT NULL,
+    minutos_respuesta numeric,
+    resolucion_exigible integer NOT NULL,
+    cerradas_en_plazo integer NOT NULL,
+    atencion_exigible integer NOT NULL,
+    atendidas_en_plazo integer NOT NULL,
+    plazos_pendientes integer NOT NULL,
+    carga_id bigint NOT NULL,
+    limite_resolucion_original timestamp with time zone,
+    ampliaciones_aprobadas integer DEFAULT 0 NOT NULL,
+    minutos_ampliados numeric DEFAULT 0 NOT NULL,
+    ampliacion_pendiente integer DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: fact_incidencia_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.fact_incidencia_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: fact_incidencia_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.fact_incidencia_sk_seq OWNED BY dw.fact_incidencia.sk;
+
+
+--
+-- Name: fact_meta; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.fact_meta (
+    sk bigint NOT NULL,
+    indicador_sk bigint NOT NULL,
+    desde_sk integer NOT NULL,
+    hasta_sk integer NOT NULL,
+    vigente_desde date NOT NULL,
+    vigente_hasta date,
+    valor numeric,
+    carga_id bigint NOT NULL
+);
+
+
+--
+-- Name: fact_meta_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.fact_meta_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: fact_meta_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.fact_meta_sk_seq OWNED BY dw.fact_meta.sk;
+
+
+--
+-- Name: fact_obligacion; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.fact_obligacion (
+    sk bigint NOT NULL,
+    obligacion_origen_id integer NOT NULL,
+    turno_origen_id integer NOT NULL,
+    servicio_sk bigint NOT NULL,
+    cliente_sk bigint NOT NULL,
+    sede_sk bigint NOT NULL,
+    supervisor_sk bigint NOT NULL,
+    fecha_sk integer NOT NULL,
+    tipo_sk integer NOT NULL,
+    fecha_limite timestamp with time zone,
+    primera_entrega timestamp with time zone,
+    ultima_entrega timestamp with time zone,
+    estado_revision text,
+    programadas integer NOT NULL,
+    exigibles integer NOT NULL,
+    completadas integer NOT NULL,
+    pendientes_vencidas integer NOT NULL,
+    oportunas integer NOT NULL,
+    revisados integer NOT NULL,
+    observados integer NOT NULL,
+    carga_id bigint NOT NULL
+);
+
+
+--
+-- Name: fact_obligacion_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.fact_obligacion_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: fact_obligacion_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.fact_obligacion_sk_seq OWNED BY dw.fact_obligacion.sk;
+
+
+--
+-- Name: fact_ronda; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.fact_ronda (
+    sk bigint NOT NULL,
+    ronda_origen_id integer NOT NULL,
+    turno_origen_id integer NOT NULL,
+    servicio_sk bigint NOT NULL,
+    cliente_sk bigint NOT NULL,
+    sede_sk bigint NOT NULL,
+    supervisor_sk bigint NOT NULL,
+    fecha_sk integer NOT NULL,
+    fecha_programada timestamp with time zone,
+    fecha_completada timestamp with time zone,
+    programadas integer NOT NULL,
+    exigibles integer NOT NULL,
+    completadas integer NOT NULL,
+    carga_id bigint NOT NULL
+);
+
+
+--
+-- Name: fact_ronda_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.fact_ronda_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: fact_ronda_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.fact_ronda_sk_seq OWNED BY dw.fact_ronda.sk;
+
+
+--
+-- Name: fact_servicio_diario; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.fact_servicio_diario (
+    sk bigint NOT NULL,
+    servicio_origen_id integer NOT NULL,
+    servicio_sk bigint NOT NULL,
+    cliente_sk bigint NOT NULL,
+    sede_sk bigint NOT NULL,
+    supervisor_sk bigint NOT NULL,
+    fecha_sk integer NOT NULL,
+    activo integer NOT NULL,
+    carga_id bigint NOT NULL
+);
+
+
+--
+-- Name: fact_servicio_diario_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.fact_servicio_diario_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: fact_servicio_diario_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.fact_servicio_diario_sk_seq OWNED BY dw.fact_servicio_diario.sk;
+
+
+--
+-- Name: fact_turno; Type: TABLE; Schema: dw; Owner: -
+--
+
+CREATE TABLE dw.fact_turno (
+    sk bigint NOT NULL,
+    turno_origen_id integer NOT NULL,
+    servicio_sk bigint NOT NULL,
+    cliente_sk bigint NOT NULL,
+    sede_sk bigint NOT NULL,
+    supervisor_sk bigint NOT NULL,
+    fecha_sk integer NOT NULL,
+    personal_sk bigint NOT NULL,
+    inicio_programado timestamp with time zone,
+    fin_programado timestamp with time zone,
+    ingreso_real timestamp with time zone,
+    salida_real timestamp with time zone,
+    tolerancia_min integer,
+    estado text,
+    programados integer NOT NULL,
+    exigibles integer NOT NULL,
+    cubiertos integer NOT NULL,
+    descubiertos integer NOT NULL,
+    asignados_validados integer NOT NULL,
+    ausentes integer NOT NULL,
+    asistencias integer NOT NULL,
+    tardanzas integer NOT NULL,
+    validaciones_pendientes integer NOT NULL,
+    carga_id bigint NOT NULL
+);
+
+
+--
+-- Name: fact_turno_sk_seq; Type: SEQUENCE; Schema: dw; Owner: -
+--
+
+CREATE SEQUENCE dw.fact_turno_sk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: fact_turno_sk_seq; Type: SEQUENCE OWNED BY; Schema: dw; Owner: -
+--
+
+ALTER SEQUENCE dw.fact_turno_sk_seq OWNED BY dw.fact_turno.sk;
+
+
+--
+-- Name: ejecuciones; Type: TABLE; Schema: etl; Owner: -
+--
+
+CREATE TABLE etl.ejecuciones (
+    id bigint NOT NULL,
+    origen text NOT NULL,
+    usuario_origen_id integer,
+    iniciado_en timestamp with time zone DEFAULT now() NOT NULL,
+    finalizado_en timestamp with time zone,
+    estado text NOT NULL,
+    detalle jsonb,
+    error text,
+    CONSTRAINT ejecuciones_estado_check CHECK ((estado = ANY (ARRAY['ejecutando'::text, 'completado'::text, 'error'::text, 'interrumpido'::text])))
+);
+
+
+--
+-- Name: ejecuciones_id_seq; Type: SEQUENCE; Schema: etl; Owner: -
+--
+
+CREATE SEQUENCE etl.ejecuciones_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: ejecuciones_id_seq; Type: SEQUENCE OWNED BY; Schema: etl; Owner: -
+--
+
+ALTER SEQUENCE etl.ejecuciones_id_seq OWNED BY etl.ejecuciones.id;
+
+
+--
+-- Name: estado; Type: TABLE; Schema: etl; Owner: -
+--
+
+CREATE TABLE etl.estado (
+    id integer NOT NULL,
+    ultima_carga_en timestamp with time zone,
+    ultimo_id bigint,
+    intervalo_min integer DEFAULT 60 NOT NULL,
+    CONSTRAINT estado_id_check CHECK ((id = 1)),
+    CONSTRAINT estado_intervalo_min_check CHECK ((intervalo_min = 60))
 );
 
 
@@ -745,7 +1471,10 @@ CREATE TABLE public.incidencias (
     sla_min integer,
     sla_resolucion_min integer,
     origen_plazo text DEFAULT 'historico'::text NOT NULL,
+    evidencias jsonb DEFAULT '[]'::jsonb NOT NULL,
+    plazo_resolucion_extendido timestamp with time zone,
     CONSTRAINT incidencias_estado_check CHECK (((estado)::text = ANY ((ARRAY['abierta'::character varying, 'en_atencion'::character varying, 'cerrada'::character varying])::text[]))),
+    CONSTRAINT incidencias_evidencias_check CHECK ((jsonb_typeof(evidencias) = 'array'::text)),
     CONSTRAINT incidencias_prioridad_check CHECK (((prioridad)::text = ANY ((ARRAY['alta'::character varying, 'media'::character varying, 'baja'::character varying])::text[]))),
     CONSTRAINT incidencias_sla_min_check CHECK ((sla_min > 0)),
     CONSTRAINT incidencias_sla_resolucion_min_check CHECK ((sla_resolucion_min > 0))
@@ -757,6 +1486,51 @@ CREATE TABLE public.incidencias (
 --
 
 COMMENT ON COLUMN public.incidencias.sla_resolucion_min IS 'Minutos desde fecha_registro hasta el vencimiento de resolución. NULL indica dato histórico desconocido.';
+
+
+--
+-- Name: incidencias_ampliaciones; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.incidencias_ampliaciones (
+    id bigint NOT NULL,
+    incidencia_id integer NOT NULL,
+    solicitado_por integer NOT NULL,
+    solicitado_en timestamp with time zone DEFAULT now() NOT NULL,
+    motivo text NOT NULL,
+    evidencias jsonb DEFAULT '[]'::jsonb NOT NULL,
+    plazo_anterior timestamp with time zone NOT NULL,
+    plazo_solicitado timestamp with time zone NOT NULL,
+    estado text DEFAULT 'pendiente'::text NOT NULL,
+    decidido_por integer,
+    decidido_en timestamp with time zone,
+    respuesta text,
+    CONSTRAINT incidencias_ampliaciones_check CHECK ((plazo_solicitado > plazo_anterior)),
+    CONSTRAINT incidencias_ampliaciones_check1 CHECK (((estado <> ALL (ARRAY['aprobada'::text, 'rechazada'::text])) OR ((decidido_por IS NOT NULL) AND (decidido_en IS NOT NULL) AND (length(TRIM(BOTH FROM respuesta)) >= 3)))),
+    CONSTRAINT incidencias_ampliaciones_check2 CHECK (((decidido_por IS NULL) OR (decidido_por <> solicitado_por))),
+    CONSTRAINT incidencias_ampliaciones_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aprobada'::text, 'rechazada'::text, 'cancelada'::text]))),
+    CONSTRAINT incidencias_ampliaciones_evidencias_check CHECK ((jsonb_typeof(evidencias) = 'array'::text)),
+    CONSTRAINT incidencias_ampliaciones_motivo_check CHECK ((length(TRIM(BOTH FROM motivo)) >= 10))
+);
+
+
+--
+-- Name: incidencias_ampliaciones_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.incidencias_ampliaciones_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: incidencias_ampliaciones_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.incidencias_ampliaciones_id_seq OWNED BY public.incidencias_ampliaciones.id;
 
 
 --
@@ -813,6 +1587,93 @@ ALTER SEQUENCE public.incidencias_id_seq OWNED BY public.incidencias.id;
 
 
 --
+-- Name: incidencias_seguimiento; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.incidencias_seguimiento (
+    id bigint NOT NULL,
+    incidencia_id integer NOT NULL,
+    accion text NOT NULL,
+    comentario text NOT NULL,
+    evidencias jsonb DEFAULT '[]'::jsonb NOT NULL,
+    usuario_id integer NOT NULL,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT incidencias_seguimiento_accion_check CHECK ((accion = ANY (ARRAY['registrar'::text, 'atender'::text, 'avance'::text, 'resolver'::text, 'solicitar_ampliacion'::text, 'aprobar_ampliacion'::text, 'rechazar_ampliacion'::text]))),
+    CONSTRAINT incidencias_seguimiento_evidencias_check CHECK ((jsonb_typeof(evidencias) = 'array'::text))
+);
+
+
+--
+-- Name: incidencias_seguimiento_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.incidencias_seguimiento_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: incidencias_seguimiento_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.incidencias_seguimiento_id_seq OWNED BY public.incidencias_seguimiento.id;
+
+
+--
+-- Name: indicadores_bi; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.indicadores_bi (
+    codigo text NOT NULL,
+    nombre text NOT NULL,
+    unidad text NOT NULL,
+    sentido text NOT NULL,
+    formula text NOT NULL,
+    CONSTRAINT indicadores_bi_sentido_check CHECK ((sentido = ANY (ARRAY['mayor'::text, 'menor'::text, 'informativo'::text]))),
+    CONSTRAINT indicadores_bi_unidad_check CHECK ((unidad = ANY (ARRAY['%'::text, 'min'::text, 'cantidad'::text, 'por_1000'::text])))
+);
+
+
+--
+-- Name: metas_bi; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.metas_bi (
+    id bigint NOT NULL,
+    codigo text NOT NULL,
+    valor numeric,
+    vigente_desde date NOT NULL,
+    vigente_hasta date,
+    actualizado_por integer,
+    actualizado_en timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT metas_bi_check CHECK (((vigente_hasta IS NULL) OR (vigente_hasta >= vigente_desde))),
+    CONSTRAINT metas_bi_valor_check CHECK ((valor >= (0)::numeric))
+);
+
+
+--
+-- Name: metas_bi_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.metas_bi_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: metas_bi_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.metas_bi_id_seq OWNED BY public.metas_bi.id;
+
+
+--
 -- Name: migraciones_aplicadas; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -859,9 +1720,16 @@ CREATE TABLE public.obligaciones_operativas (
     evidencia_url text,
     origen text DEFAULT 'manual'::text NOT NULL,
     evidencias jsonb DEFAULT '[]'::jsonb NOT NULL,
+    estado_revision text DEFAULT 'pendiente'::text NOT NULL,
+    revisado_por integer,
+    fecha_revision timestamp with time zone,
+    primera_entrega_en timestamp with time zone,
+    version_entrega integer DEFAULT 1 NOT NULL,
     CONSTRAINT obligaciones_operativas_descripcion_check CHECK ((length(TRIM(BOTH FROM descripcion)) > 0)),
+    CONSTRAINT obligaciones_operativas_estado_revision_check CHECK ((estado_revision = ANY (ARRAY['pendiente'::text, 'aprobado'::text, 'observado'::text]))),
     CONSTRAINT obligaciones_operativas_evidencias_check CHECK (((jsonb_typeof(evidencias) = 'array'::text) AND (jsonb_array_length(evidencias) <= 6))),
-    CONSTRAINT obligaciones_operativas_tipo_check CHECK ((tipo = ANY (ARRAY['actividad'::text, 'reporte'::text])))
+    CONSTRAINT obligaciones_operativas_tipo_check CHECK ((tipo = ANY (ARRAY['actividad'::text, 'reporte'::text]))),
+    CONSTRAINT obligaciones_operativas_version_entrega_check CHECK ((version_entrega > 0))
 );
 
 
@@ -1108,6 +1976,45 @@ CREATE SEQUENCE public.reportes_generados_id_seq
 --
 
 ALTER SEQUENCE public.reportes_generados_id_seq OWNED BY public.reportes_generados.id;
+
+
+--
+-- Name: revisiones_reportes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.revisiones_reportes (
+    id bigint NOT NULL,
+    reporte_id integer NOT NULL,
+    version_entrega integer NOT NULL,
+    estado text NOT NULL,
+    observacion text,
+    revisado_por integer NOT NULL,
+    revisado_en timestamp with time zone DEFAULT now() NOT NULL,
+    fecha_entrega timestamp with time zone NOT NULL,
+    contenido text,
+    evidencias jsonb DEFAULT '[]'::jsonb NOT NULL,
+    CONSTRAINT revisiones_reportes_check CHECK (((estado <> 'observado'::text) OR (length(TRIM(BOTH FROM observacion)) >= 3))),
+    CONSTRAINT revisiones_reportes_estado_check CHECK ((estado = ANY (ARRAY['aprobado'::text, 'observado'::text])))
+);
+
+
+--
+-- Name: revisiones_reportes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.revisiones_reportes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: revisiones_reportes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.revisiones_reportes_id_seq OWNED BY public.revisiones_reportes.id;
 
 
 --
@@ -1942,6 +2849,104 @@ ALTER TABLE ONLY bi.cargas ALTER COLUMN id SET DEFAULT nextval('bi.cargas_id_seq
 
 
 --
+-- Name: dim_cliente sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_cliente ALTER COLUMN sk SET DEFAULT nextval('dw.dim_cliente_sk_seq'::regclass);
+
+
+--
+-- Name: dim_indicador sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_indicador ALTER COLUMN sk SET DEFAULT nextval('dw.dim_indicador_sk_seq'::regclass);
+
+
+--
+-- Name: dim_personal sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_personal ALTER COLUMN sk SET DEFAULT nextval('dw.dim_personal_sk_seq'::regclass);
+
+
+--
+-- Name: dim_sede sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_sede ALTER COLUMN sk SET DEFAULT nextval('dw.dim_sede_sk_seq'::regclass);
+
+
+--
+-- Name: dim_servicio sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_servicio ALTER COLUMN sk SET DEFAULT nextval('dw.dim_servicio_sk_seq'::regclass);
+
+
+--
+-- Name: dim_supervisor sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_supervisor ALTER COLUMN sk SET DEFAULT nextval('dw.dim_supervisor_sk_seq'::regclass);
+
+
+--
+-- Name: dim_tipo_incidencia sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_tipo_incidencia ALTER COLUMN sk SET DEFAULT nextval('dw.dim_tipo_incidencia_sk_seq'::regclass);
+
+
+--
+-- Name: fact_incidencia sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia ALTER COLUMN sk SET DEFAULT nextval('dw.fact_incidencia_sk_seq'::regclass);
+
+
+--
+-- Name: fact_meta sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_meta ALTER COLUMN sk SET DEFAULT nextval('dw.fact_meta_sk_seq'::regclass);
+
+
+--
+-- Name: fact_obligacion sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_obligacion ALTER COLUMN sk SET DEFAULT nextval('dw.fact_obligacion_sk_seq'::regclass);
+
+
+--
+-- Name: fact_ronda sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_ronda ALTER COLUMN sk SET DEFAULT nextval('dw.fact_ronda_sk_seq'::regclass);
+
+
+--
+-- Name: fact_servicio_diario sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_servicio_diario ALTER COLUMN sk SET DEFAULT nextval('dw.fact_servicio_diario_sk_seq'::regclass);
+
+
+--
+-- Name: fact_turno sk; Type: DEFAULT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_turno ALTER COLUMN sk SET DEFAULT nextval('dw.fact_turno_sk_seq'::regclass);
+
+
+--
+-- Name: ejecuciones id; Type: DEFAULT; Schema: etl; Owner: -
+--
+
+ALTER TABLE ONLY etl.ejecuciones ALTER COLUMN id SET DEFAULT nextval('etl.ejecuciones_id_seq'::regclass);
+
+
+--
 -- Name: actividad_reciente id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2012,10 +3017,31 @@ ALTER TABLE ONLY public.incidencias ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
+-- Name: incidencias_ampliaciones id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidencias_ampliaciones ALTER COLUMN id SET DEFAULT nextval('public.incidencias_ampliaciones_id_seq'::regclass);
+
+
+--
 -- Name: incidencias_historial id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.incidencias_historial ALTER COLUMN id SET DEFAULT nextval('public.incidencias_historial_id_seq'::regclass);
+
+
+--
+-- Name: incidencias_seguimiento id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidencias_seguimiento ALTER COLUMN id SET DEFAULT nextval('public.incidencias_seguimiento_id_seq'::regclass);
+
+
+--
+-- Name: metas_bi id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metas_bi ALTER COLUMN id SET DEFAULT nextval('public.metas_bi_id_seq'::regclass);
 
 
 --
@@ -2058,6 +3084,13 @@ ALTER TABLE ONLY public.protocolos ALTER COLUMN id SET DEFAULT nextval('public.p
 --
 
 ALTER TABLE ONLY public.reportes_generados ALTER COLUMN id SET DEFAULT nextval('public.reportes_generados_id_seq'::regclass);
+
+
+--
+-- Name: revisiones_reportes id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.revisiones_reportes ALTER COLUMN id SET DEFAULT nextval('public.revisiones_reportes_id_seq'::regclass);
 
 
 --
@@ -2231,6 +3264,222 @@ ALTER TABLE ONLY bi.hecho_turno
 
 
 --
+-- Name: dim_cliente dim_cliente_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_cliente
+    ADD CONSTRAINT dim_cliente_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: dim_fecha dim_fecha_fecha_key; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_fecha
+    ADD CONSTRAINT dim_fecha_fecha_key UNIQUE (fecha);
+
+
+--
+-- Name: dim_fecha dim_fecha_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_fecha
+    ADD CONSTRAINT dim_fecha_pkey PRIMARY KEY (fecha_sk);
+
+
+--
+-- Name: dim_indicador dim_indicador_codigo_key; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_indicador
+    ADD CONSTRAINT dim_indicador_codigo_key UNIQUE (codigo);
+
+
+--
+-- Name: dim_indicador dim_indicador_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_indicador
+    ADD CONSTRAINT dim_indicador_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: dim_personal dim_personal_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_personal
+    ADD CONSTRAINT dim_personal_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: dim_sede dim_sede_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_sede
+    ADD CONSTRAINT dim_sede_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: dim_servicio dim_servicio_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_servicio
+    ADD CONSTRAINT dim_servicio_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: dim_supervisor dim_supervisor_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_supervisor
+    ADD CONSTRAINT dim_supervisor_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: dim_tipo_incidencia dim_tipo_incidencia_origen_id_key; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_tipo_incidencia
+    ADD CONSTRAINT dim_tipo_incidencia_origen_id_key UNIQUE (origen_id);
+
+
+--
+-- Name: dim_tipo_incidencia dim_tipo_incidencia_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_tipo_incidencia
+    ADD CONSTRAINT dim_tipo_incidencia_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: dim_tipo_obligacion dim_tipo_obligacion_nombre_key; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_tipo_obligacion
+    ADD CONSTRAINT dim_tipo_obligacion_nombre_key UNIQUE (nombre);
+
+
+--
+-- Name: dim_tipo_obligacion dim_tipo_obligacion_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.dim_tipo_obligacion
+    ADD CONSTRAINT dim_tipo_obligacion_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: fact_incidencia fact_incidencia_incidencia_origen_id_key; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia
+    ADD CONSTRAINT fact_incidencia_incidencia_origen_id_key UNIQUE (incidencia_origen_id);
+
+
+--
+-- Name: fact_incidencia fact_incidencia_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia
+    ADD CONSTRAINT fact_incidencia_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: fact_meta fact_meta_indicador_sk_vigente_desde_key; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_meta
+    ADD CONSTRAINT fact_meta_indicador_sk_vigente_desde_key UNIQUE (indicador_sk, vigente_desde);
+
+
+--
+-- Name: fact_meta fact_meta_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_meta
+    ADD CONSTRAINT fact_meta_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: fact_obligacion fact_obligacion_obligacion_origen_id_key; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_obligacion
+    ADD CONSTRAINT fact_obligacion_obligacion_origen_id_key UNIQUE (obligacion_origen_id);
+
+
+--
+-- Name: fact_obligacion fact_obligacion_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_obligacion
+    ADD CONSTRAINT fact_obligacion_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: fact_ronda fact_ronda_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_ronda
+    ADD CONSTRAINT fact_ronda_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: fact_ronda fact_ronda_ronda_origen_id_key; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_ronda
+    ADD CONSTRAINT fact_ronda_ronda_origen_id_key UNIQUE (ronda_origen_id);
+
+
+--
+-- Name: fact_servicio_diario fact_servicio_diario_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_servicio_diario
+    ADD CONSTRAINT fact_servicio_diario_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: fact_servicio_diario fact_servicio_diario_servicio_origen_id_fecha_sk_key; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_servicio_diario
+    ADD CONSTRAINT fact_servicio_diario_servicio_origen_id_fecha_sk_key UNIQUE (servicio_origen_id, fecha_sk);
+
+
+--
+-- Name: fact_turno fact_turno_pkey; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_turno
+    ADD CONSTRAINT fact_turno_pkey PRIMARY KEY (sk);
+
+
+--
+-- Name: fact_turno fact_turno_turno_origen_id_key; Type: CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_turno
+    ADD CONSTRAINT fact_turno_turno_origen_id_key UNIQUE (turno_origen_id);
+
+
+--
+-- Name: ejecuciones ejecuciones_pkey; Type: CONSTRAINT; Schema: etl; Owner: -
+--
+
+ALTER TABLE ONLY etl.ejecuciones
+    ADD CONSTRAINT ejecuciones_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: estado estado_pkey; Type: CONSTRAINT; Schema: etl; Owner: -
+--
+
+ALTER TABLE ONLY etl.estado
+    ADD CONSTRAINT estado_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: actividad_reciente actividad_reciente_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2375,6 +3624,14 @@ ALTER TABLE ONLY public.importaciones
 
 
 --
+-- Name: incidencias_ampliaciones incidencias_ampliaciones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidencias_ampliaciones
+    ADD CONSTRAINT incidencias_ampliaciones_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: incidencias_historial incidencias_historial_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2388,6 +3645,38 @@ ALTER TABLE ONLY public.incidencias_historial
 
 ALTER TABLE ONLY public.incidencias
     ADD CONSTRAINT incidencias_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: incidencias_seguimiento incidencias_seguimiento_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidencias_seguimiento
+    ADD CONSTRAINT incidencias_seguimiento_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: indicadores_bi indicadores_bi_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.indicadores_bi
+    ADD CONSTRAINT indicadores_bi_pkey PRIMARY KEY (codigo);
+
+
+--
+-- Name: metas_bi metas_bi_codigo_vigente_desde_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metas_bi
+    ADD CONSTRAINT metas_bi_codigo_vigente_desde_key UNIQUE (codigo, vigente_desde);
+
+
+--
+-- Name: metas_bi metas_bi_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metas_bi
+    ADD CONSTRAINT metas_bi_pkey PRIMARY KEY (id);
 
 
 --
@@ -2460,6 +3749,22 @@ ALTER TABLE ONLY public.protocolos
 
 ALTER TABLE ONLY public.reportes_generados
     ADD CONSTRAINT reportes_generados_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: revisiones_reportes revisiones_reportes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.revisiones_reportes
+    ADD CONSTRAINT revisiones_reportes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: revisiones_reportes revisiones_reportes_reporte_id_version_entrega_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.revisiones_reportes
+    ADD CONSTRAINT revisiones_reportes_reporte_id_version_entrega_key UNIQUE (reporte_id, version_entrega);
 
 
 --
@@ -2631,6 +3936,111 @@ ALTER TABLE ONLY public.verificaciones_consignas
 
 
 --
+-- Name: dim_cliente_actual; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE UNIQUE INDEX dim_cliente_actual ON dw.dim_cliente USING btree (origen_id) WHERE actual;
+
+
+--
+-- Name: dim_cliente_version; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX dim_cliente_version ON dw.dim_cliente USING btree (origen_id, vigente_desde, vigente_hasta);
+
+
+--
+-- Name: dim_personal_actual; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE UNIQUE INDEX dim_personal_actual ON dw.dim_personal USING btree (origen_id) WHERE actual;
+
+
+--
+-- Name: dim_personal_version; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX dim_personal_version ON dw.dim_personal USING btree (origen_id, vigente_desde, vigente_hasta);
+
+
+--
+-- Name: dim_sede_actual; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE UNIQUE INDEX dim_sede_actual ON dw.dim_sede USING btree (origen_id) WHERE actual;
+
+
+--
+-- Name: dim_sede_version; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX dim_sede_version ON dw.dim_sede USING btree (origen_id, vigente_desde, vigente_hasta);
+
+
+--
+-- Name: dim_servicio_actual; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE UNIQUE INDEX dim_servicio_actual ON dw.dim_servicio USING btree (origen_id) WHERE actual;
+
+
+--
+-- Name: dim_servicio_version; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX dim_servicio_version ON dw.dim_servicio USING btree (origen_id, vigente_desde, vigente_hasta);
+
+
+--
+-- Name: dim_supervisor_actual; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE UNIQUE INDEX dim_supervisor_actual ON dw.dim_supervisor USING btree (origen_id) WHERE actual;
+
+
+--
+-- Name: dim_supervisor_version; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX dim_supervisor_version ON dw.dim_supervisor USING btree (origen_id, vigente_desde, vigente_hasta);
+
+
+--
+-- Name: fact_incidencia_filtros; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX fact_incidencia_filtros ON dw.fact_incidencia USING btree (fecha_sk, servicio_sk, cliente_sk, sede_sk, supervisor_sk);
+
+
+--
+-- Name: fact_obligacion_filtros; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX fact_obligacion_filtros ON dw.fact_obligacion USING btree (fecha_sk, servicio_sk, cliente_sk, sede_sk, supervisor_sk);
+
+
+--
+-- Name: fact_ronda_filtros; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX fact_ronda_filtros ON dw.fact_ronda USING btree (fecha_sk, servicio_sk, cliente_sk, sede_sk, supervisor_sk);
+
+
+--
+-- Name: fact_servicio_diario_filtros; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX fact_servicio_diario_filtros ON dw.fact_servicio_diario USING btree (fecha_sk, servicio_sk, cliente_sk, sede_sk, supervisor_sk);
+
+
+--
+-- Name: fact_turno_filtros; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX fact_turno_filtros ON dw.fact_turno USING btree (fecha_sk, servicio_sk, cliente_sk, sede_sk, supervisor_sk);
+
+
+--
 -- Name: idx_actividad_creado_en; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2778,6 +4188,27 @@ CREATE INDEX idx_verificaciones_consignas_turno ON public.verificaciones_consign
 
 
 --
+-- Name: incidencias_ampliaciones_bandeja; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX incidencias_ampliaciones_bandeja ON public.incidencias_ampliaciones USING btree (estado, incidencia_id);
+
+
+--
+-- Name: incidencias_seguimiento_orden; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX incidencias_seguimiento_orden ON public.incidencias_seguimiento USING btree (incidencia_id, creado_en, id);
+
+
+--
+-- Name: incidencias_una_ampliacion_pendiente; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX incidencias_una_ampliacion_pendiente ON public.incidencias_ampliaciones USING btree (incidencia_id) WHERE (estado = 'pendiente'::text);
+
+
+--
 -- Name: servicios_codigo_externo; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2917,6 +4348,270 @@ ALTER TABLE ONLY bi.hecho_turno
 
 ALTER TABLE ONLY bi.hecho_turno
     ADD CONSTRAINT hecho_turno_servicio_id_fkey FOREIGN KEY (servicio_id) REFERENCES bi.dim_servicio(id);
+
+
+--
+-- Name: fact_incidencia fact_incidencia_cliente_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia
+    ADD CONSTRAINT fact_incidencia_cliente_sk_fkey FOREIGN KEY (cliente_sk) REFERENCES dw.dim_cliente(sk);
+
+
+--
+-- Name: fact_incidencia fact_incidencia_fecha_atencion_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia
+    ADD CONSTRAINT fact_incidencia_fecha_atencion_sk_fkey FOREIGN KEY (fecha_atencion_sk) REFERENCES dw.dim_fecha(fecha_sk);
+
+
+--
+-- Name: fact_incidencia fact_incidencia_fecha_cierre_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia
+    ADD CONSTRAINT fact_incidencia_fecha_cierre_sk_fkey FOREIGN KEY (fecha_cierre_sk) REFERENCES dw.dim_fecha(fecha_sk);
+
+
+--
+-- Name: fact_incidencia fact_incidencia_fecha_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia
+    ADD CONSTRAINT fact_incidencia_fecha_sk_fkey FOREIGN KEY (fecha_sk) REFERENCES dw.dim_fecha(fecha_sk);
+
+
+--
+-- Name: fact_incidencia fact_incidencia_sede_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia
+    ADD CONSTRAINT fact_incidencia_sede_sk_fkey FOREIGN KEY (sede_sk) REFERENCES dw.dim_sede(sk);
+
+
+--
+-- Name: fact_incidencia fact_incidencia_servicio_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia
+    ADD CONSTRAINT fact_incidencia_servicio_sk_fkey FOREIGN KEY (servicio_sk) REFERENCES dw.dim_servicio(sk);
+
+
+--
+-- Name: fact_incidencia fact_incidencia_supervisor_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia
+    ADD CONSTRAINT fact_incidencia_supervisor_sk_fkey FOREIGN KEY (supervisor_sk) REFERENCES dw.dim_supervisor(sk);
+
+
+--
+-- Name: fact_incidencia fact_incidencia_tipo_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_incidencia
+    ADD CONSTRAINT fact_incidencia_tipo_sk_fkey FOREIGN KEY (tipo_sk) REFERENCES dw.dim_tipo_incidencia(sk);
+
+
+--
+-- Name: fact_meta fact_meta_desde_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_meta
+    ADD CONSTRAINT fact_meta_desde_sk_fkey FOREIGN KEY (desde_sk) REFERENCES dw.dim_fecha(fecha_sk);
+
+
+--
+-- Name: fact_meta fact_meta_hasta_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_meta
+    ADD CONSTRAINT fact_meta_hasta_sk_fkey FOREIGN KEY (hasta_sk) REFERENCES dw.dim_fecha(fecha_sk);
+
+
+--
+-- Name: fact_meta fact_meta_indicador_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_meta
+    ADD CONSTRAINT fact_meta_indicador_sk_fkey FOREIGN KEY (indicador_sk) REFERENCES dw.dim_indicador(sk);
+
+
+--
+-- Name: fact_obligacion fact_obligacion_cliente_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_obligacion
+    ADD CONSTRAINT fact_obligacion_cliente_sk_fkey FOREIGN KEY (cliente_sk) REFERENCES dw.dim_cliente(sk);
+
+
+--
+-- Name: fact_obligacion fact_obligacion_fecha_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_obligacion
+    ADD CONSTRAINT fact_obligacion_fecha_sk_fkey FOREIGN KEY (fecha_sk) REFERENCES dw.dim_fecha(fecha_sk);
+
+
+--
+-- Name: fact_obligacion fact_obligacion_sede_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_obligacion
+    ADD CONSTRAINT fact_obligacion_sede_sk_fkey FOREIGN KEY (sede_sk) REFERENCES dw.dim_sede(sk);
+
+
+--
+-- Name: fact_obligacion fact_obligacion_servicio_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_obligacion
+    ADD CONSTRAINT fact_obligacion_servicio_sk_fkey FOREIGN KEY (servicio_sk) REFERENCES dw.dim_servicio(sk);
+
+
+--
+-- Name: fact_obligacion fact_obligacion_supervisor_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_obligacion
+    ADD CONSTRAINT fact_obligacion_supervisor_sk_fkey FOREIGN KEY (supervisor_sk) REFERENCES dw.dim_supervisor(sk);
+
+
+--
+-- Name: fact_obligacion fact_obligacion_tipo_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_obligacion
+    ADD CONSTRAINT fact_obligacion_tipo_sk_fkey FOREIGN KEY (tipo_sk) REFERENCES dw.dim_tipo_obligacion(sk);
+
+
+--
+-- Name: fact_ronda fact_ronda_cliente_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_ronda
+    ADD CONSTRAINT fact_ronda_cliente_sk_fkey FOREIGN KEY (cliente_sk) REFERENCES dw.dim_cliente(sk);
+
+
+--
+-- Name: fact_ronda fact_ronda_fecha_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_ronda
+    ADD CONSTRAINT fact_ronda_fecha_sk_fkey FOREIGN KEY (fecha_sk) REFERENCES dw.dim_fecha(fecha_sk);
+
+
+--
+-- Name: fact_ronda fact_ronda_sede_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_ronda
+    ADD CONSTRAINT fact_ronda_sede_sk_fkey FOREIGN KEY (sede_sk) REFERENCES dw.dim_sede(sk);
+
+
+--
+-- Name: fact_ronda fact_ronda_servicio_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_ronda
+    ADD CONSTRAINT fact_ronda_servicio_sk_fkey FOREIGN KEY (servicio_sk) REFERENCES dw.dim_servicio(sk);
+
+
+--
+-- Name: fact_ronda fact_ronda_supervisor_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_ronda
+    ADD CONSTRAINT fact_ronda_supervisor_sk_fkey FOREIGN KEY (supervisor_sk) REFERENCES dw.dim_supervisor(sk);
+
+
+--
+-- Name: fact_servicio_diario fact_servicio_diario_cliente_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_servicio_diario
+    ADD CONSTRAINT fact_servicio_diario_cliente_sk_fkey FOREIGN KEY (cliente_sk) REFERENCES dw.dim_cliente(sk);
+
+
+--
+-- Name: fact_servicio_diario fact_servicio_diario_fecha_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_servicio_diario
+    ADD CONSTRAINT fact_servicio_diario_fecha_sk_fkey FOREIGN KEY (fecha_sk) REFERENCES dw.dim_fecha(fecha_sk);
+
+
+--
+-- Name: fact_servicio_diario fact_servicio_diario_sede_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_servicio_diario
+    ADD CONSTRAINT fact_servicio_diario_sede_sk_fkey FOREIGN KEY (sede_sk) REFERENCES dw.dim_sede(sk);
+
+
+--
+-- Name: fact_servicio_diario fact_servicio_diario_servicio_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_servicio_diario
+    ADD CONSTRAINT fact_servicio_diario_servicio_sk_fkey FOREIGN KEY (servicio_sk) REFERENCES dw.dim_servicio(sk);
+
+
+--
+-- Name: fact_servicio_diario fact_servicio_diario_supervisor_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_servicio_diario
+    ADD CONSTRAINT fact_servicio_diario_supervisor_sk_fkey FOREIGN KEY (supervisor_sk) REFERENCES dw.dim_supervisor(sk);
+
+
+--
+-- Name: fact_turno fact_turno_cliente_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_turno
+    ADD CONSTRAINT fact_turno_cliente_sk_fkey FOREIGN KEY (cliente_sk) REFERENCES dw.dim_cliente(sk);
+
+
+--
+-- Name: fact_turno fact_turno_fecha_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_turno
+    ADD CONSTRAINT fact_turno_fecha_sk_fkey FOREIGN KEY (fecha_sk) REFERENCES dw.dim_fecha(fecha_sk);
+
+
+--
+-- Name: fact_turno fact_turno_personal_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_turno
+    ADD CONSTRAINT fact_turno_personal_sk_fkey FOREIGN KEY (personal_sk) REFERENCES dw.dim_personal(sk);
+
+
+--
+-- Name: fact_turno fact_turno_sede_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_turno
+    ADD CONSTRAINT fact_turno_sede_sk_fkey FOREIGN KEY (sede_sk) REFERENCES dw.dim_sede(sk);
+
+
+--
+-- Name: fact_turno fact_turno_servicio_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_turno
+    ADD CONSTRAINT fact_turno_servicio_sk_fkey FOREIGN KEY (servicio_sk) REFERENCES dw.dim_servicio(sk);
+
+
+--
+-- Name: fact_turno fact_turno_supervisor_sk_fkey; Type: FK CONSTRAINT; Schema: dw; Owner: -
+--
+
+ALTER TABLE ONLY dw.fact_turno
+    ADD CONSTRAINT fact_turno_supervisor_sk_fkey FOREIGN KEY (supervisor_sk) REFERENCES dw.dim_supervisor(sk);
 
 
 --
@@ -3088,6 +4783,30 @@ ALTER TABLE ONLY public.importaciones
 
 
 --
+-- Name: incidencias_ampliaciones incidencias_ampliaciones_decidido_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidencias_ampliaciones
+    ADD CONSTRAINT incidencias_ampliaciones_decidido_por_fkey FOREIGN KEY (decidido_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: incidencias_ampliaciones incidencias_ampliaciones_incidencia_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidencias_ampliaciones
+    ADD CONSTRAINT incidencias_ampliaciones_incidencia_id_fkey FOREIGN KEY (incidencia_id) REFERENCES public.incidencias(id);
+
+
+--
+-- Name: incidencias_ampliaciones incidencias_ampliaciones_solicitado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidencias_ampliaciones
+    ADD CONSTRAINT incidencias_ampliaciones_solicitado_por_fkey FOREIGN KEY (solicitado_por) REFERENCES public.usuarios(id);
+
+
+--
 -- Name: incidencias incidencias_eliminado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3136,6 +4855,22 @@ ALTER TABLE ONLY public.incidencias
 
 
 --
+-- Name: incidencias_seguimiento incidencias_seguimiento_incidencia_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidencias_seguimiento
+    ADD CONSTRAINT incidencias_seguimiento_incidencia_id_fkey FOREIGN KEY (incidencia_id) REFERENCES public.incidencias(id);
+
+
+--
+-- Name: incidencias_seguimiento incidencias_seguimiento_usuario_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidencias_seguimiento
+    ADD CONSTRAINT incidencias_seguimiento_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id);
+
+
+--
 -- Name: incidencias incidencias_servicio_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3157,6 +4892,22 @@ ALTER TABLE ONLY public.incidencias
 
 ALTER TABLE ONLY public.incidencias
     ADD CONSTRAINT incidencias_turno_id_fkey FOREIGN KEY (turno_id) REFERENCES public.turnos(id);
+
+
+--
+-- Name: metas_bi metas_bi_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metas_bi
+    ADD CONSTRAINT metas_bi_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: metas_bi metas_bi_codigo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metas_bi
+    ADD CONSTRAINT metas_bi_codigo_fkey FOREIGN KEY (codigo) REFERENCES public.indicadores_bi(codigo);
 
 
 --
@@ -3189,6 +4940,14 @@ ALTER TABLE ONLY public.obligaciones_operativas
 
 ALTER TABLE ONLY public.obligaciones_operativas
     ADD CONSTRAINT obligaciones_operativas_plantilla_id_fkey FOREIGN KEY (plantilla_id) REFERENCES public.plantillas_operativas(id);
+
+
+--
+-- Name: obligaciones_operativas obligaciones_operativas_revisado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.obligaciones_operativas
+    ADD CONSTRAINT obligaciones_operativas_revisado_por_fkey FOREIGN KEY (revisado_por) REFERENCES public.usuarios(id);
 
 
 --
@@ -3285,6 +5044,22 @@ ALTER TABLE ONLY public.reportes_generados
 
 ALTER TABLE ONLY public.reportes_generados
     ADD CONSTRAINT reportes_generados_generado_por_fkey FOREIGN KEY (generado_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: revisiones_reportes revisiones_reportes_reporte_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.revisiones_reportes
+    ADD CONSTRAINT revisiones_reportes_reporte_id_fkey FOREIGN KEY (reporte_id) REFERENCES public.obligaciones_operativas(id);
+
+
+--
+-- Name: revisiones_reportes revisiones_reportes_revisado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.revisiones_reportes
+    ADD CONSTRAINT revisiones_reportes_revisado_por_fkey FOREIGN KEY (revisado_por) REFERENCES public.usuarios(id);
 
 
 --

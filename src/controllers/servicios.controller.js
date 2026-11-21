@@ -7,7 +7,7 @@ const { paginacion, metaPaginacion } = require('../utils/paginacion');
 const listar = async (req, res, next) => {
   try {
     const { limite, offset, pagina } = paginacion(req.query);
-    const supervisorId = req.query.supervisorId ? parseInt(req.query.supervisorId, 10) : null;
+    const supervisorId = req.usuario.rol==='supervisor' ? (req.supervisorAsignado || -1) : req.query.supervisorId ? parseInt(req.query.supervisorId, 10) : null;
     const personalId = req.query.personalId
       ? parseInt(req.query.personalId, 10)
       : (req.usuario?.rol === 'operador' && req.query.soloMios === 'true' ? req.usuario.personalId : null);
@@ -30,7 +30,7 @@ const listar = async (req, res, next) => {
 
 const resumen = async (req, res, next) => {
   try {
-    const supervisorId = req.query.supervisorId ? parseInt(req.query.supervisorId, 10) : null;
+    const supervisorId = req.usuario.rol==='supervisor' ? (req.supervisorAsignado || -1) : req.query.supervisorId ? parseInt(req.query.supervisorId, 10) : null;
     respuestaExito(res, await serviciosService.obtenerResumen(supervisorId));
   } catch (err) {
     next(err);
@@ -185,7 +185,7 @@ const desasignarPersonal = async (req, res, next) => {
 const listarTodasAsignaciones = async (req, res, next) => {
   try {
     const { pagina, limite, servicioId, personalId } = req.query;
-    const resultado = await serviciosService.listarTodasAsignaciones({ pagina, limite,
+    const resultado = await serviciosService.listarTodasAsignaciones({ pagina, limite,supervisorId:req.usuario.rol==='supervisor'?(req.supervisorAsignado || -1):null,
       servicioId: servicioId ? parseInt(servicioId, 10) : null,
       personalId: personalId ? parseInt(personalId, 10) : null });
     respuestaExito(res, resultado.datos, resultado.meta);

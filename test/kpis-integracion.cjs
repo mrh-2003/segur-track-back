@@ -79,11 +79,10 @@ const { evaluarFuentes } = require('../src/services/evaluacion-operativa');
       await svc.registrar(nuevoTurno.id,{tipo:'consigna',consignaId:catalogo[0].id,cumplida:true},operador);
       await assert.rejects(()=>svc.registrar(nuevoTurno.id,{tipo:'consigna',consignaId:catalogo[0].id,cumplida:true},operador),/ya fue/);
     }finally{await new Promise(r=>server.close(r));}
-    const i=(await c.query('SELECT * FROM incidencias WHERE NOT eliminado AND responsable_id IS NOT NULL LIMIT 1')).rows[0];
+    const i=(await c.query("SELECT (SELECT MIN(id) FROM tipos_incidencia WHERE NOT eliminado) tipo_incidencia_id,sp.servicio_id,p.id responsable_id FROM personal p JOIN usuarios u ON u.id=p.usuario_id JOIN servicio_personal sp ON sp.personal_id=p.id WHERE u.rol='operador' AND u.activo AND NOT u.eliminado AND NOT p.eliminado AND p.estado='activo' AND NOT sp.eliminado LIMIT 1")).rows[0];
     const nueva=await incidencias.guardar(null,{tipoIncidenciaId:i.tipo_incidencia_id,servicioId:i.servicio_id,responsableId:i.responsable_id,descripcion:'Prueba aislada de plazos independientes',prioridad:'alta'},u.id);
     assert.equal(nueva.sla_resolucion_min,240);
-    const actualizada=await incidencias.guardar(nueva.id,{slaResolucionMin:480},u.id);
-    assert.equal(actualizada.sla_resolucion_min,480);
+    await assert.rejects(()=>incidencias.guardar(nueva.id,{slaResolucionMin:480},u),/solicitud/);
     const data=await repo.fuentes();
     assert.equal(data.criterios.map(c=>c.codigo).join(','),'C01,C02,C03,C04,C05');
     assert.ok(data.turnos.every(t=>typeof t.plan_kpi_validado==='boolean'));

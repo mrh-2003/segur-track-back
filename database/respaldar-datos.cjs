@@ -13,7 +13,7 @@ const pool = require('../src/config/db');
     ).rows[0];
     const tablas = (
       await c.query(
-        "SELECT schemaname,tablename FROM pg_tables WHERE schemaname IN ('public','bi') ORDER BY schemaname,tablename"
+        "SELECT schemaname,tablename FROM pg_tables WHERE schemaname IN ('public','bi','dw','etl') ORDER BY schemaname,tablename"
       )
     ).rows;
     const respaldo = { ...info, tablas: [], secuencias: [] };
@@ -25,7 +25,7 @@ const pool = require('../src/config/db');
     }
     const sec = (
       await c.query(
-        "SELECT sequence_schema,sequence_name FROM information_schema.sequences WHERE sequence_schema IN ('public','bi')"
+        "SELECT sequence_schema,sequence_name FROM information_schema.sequences WHERE sequence_schema IN ('public','bi','dw','etl')"
       )
     ).rows;
     for (const s of sec)

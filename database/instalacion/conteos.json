@@ -1,9 +1,9 @@
 {
-  "generado": "2026-11-18T23:13:15.194Z",
+  "generado": "2026-11-21T20:18:37.772Z",
   "tablas": [
     {
       "tabla": "bi.cargas",
-      "filas": 10
+      "filas": 11
     },
     {
       "tabla": "bi.dim_cliente",
@@ -11,7 +11,7 @@
     },
     {
       "tabla": "bi.dim_fecha",
-      "filas": 35
+      "filas": 55
     },
     {
       "tabla": "bi.dim_personal",
@@ -27,15 +27,83 @@
     },
     {
       "tabla": "bi.hecho_incidencia",
-      "filas": 768
+      "filas": 848
     },
     {
       "tabla": "bi.hecho_turno",
-      "filas": 1615
+      "filas": 1855
     },
     {
       "tabla": "bi.hecho_evidencia",
-      "filas": 1615
+      "filas": 1855
+    },
+    {
+      "tabla": "dw.dim_cliente",
+      "filas": 10
+    },
+    {
+      "tabla": "dw.dim_fecha",
+      "filas": 1465
+    },
+    {
+      "tabla": "dw.dim_indicador",
+      "filas": 14
+    },
+    {
+      "tabla": "dw.dim_personal",
+      "filas": 81
+    },
+    {
+      "tabla": "dw.dim_sede",
+      "filas": 8
+    },
+    {
+      "tabla": "dw.dim_servicio",
+      "filas": 39
+    },
+    {
+      "tabla": "dw.dim_supervisor",
+      "filas": 81
+    },
+    {
+      "tabla": "dw.dim_tipo_incidencia",
+      "filas": 9
+    },
+    {
+      "tabla": "dw.dim_tipo_obligacion",
+      "filas": 3
+    },
+    {
+      "tabla": "dw.fact_incidencia",
+      "filas": 1226
+    },
+    {
+      "tabla": "dw.fact_meta",
+      "filas": 28
+    },
+    {
+      "tabla": "dw.fact_obligacion",
+      "filas": 3710
+    },
+    {
+      "tabla": "dw.fact_ronda",
+      "filas": 7451
+    },
+    {
+      "tabla": "dw.fact_servicio_diario",
+      "filas": 2050
+    },
+    {
+      "tabla": "dw.fact_turno",
+      "filas": 1855
+    },
+    {
+      "tabla": "etl.ejecuciones",
+      "filas": 12
+    },
+    {
+      "tabla": "etl.estado",
+      "filas": 1
     },
     {
       "tabla": "public.configuracion_operativa",
@@ -46,8 +114,12 @@
       "filas": 24
     },
     {
+      "tabla": "public.indicadores_bi",
+      "filas": 14
+    },
+    {
       "tabla": "public.migraciones_aplicadas",
-      "filas": 10
+      "filas": 15
     },
     {
       "tabla": "public.modelo_operativo",
@@ -63,11 +135,11 @@
     },
     {
       "tabla": "public.usuarios",
-      "filas": 15
+      "filas": 73
     },
     {
       "tabla": "public.actividad_reciente",
-      "filas": 125
+      "filas": 130
     },
     {
       "tabla": "public.clientes",
@@ -80,6 +152,10 @@
     {
       "tabla": "public.importaciones",
       "filas": 1
+    },
+    {
+      "tabla": "public.metas_bi",
+      "filas": 28
     },
     {
       "tabla": "public.protocolos",
@@ -155,7 +231,7 @@
     },
     {
       "tabla": "public.turnos",
-      "filas": 1615
+      "filas": 1855
     },
     {
       "tabla": "public.evidencias_servicio",
@@ -167,23 +243,35 @@
     },
     {
       "tabla": "public.incidencias",
-      "filas": 768
+      "filas": 1226
+    },
+    {
+      "tabla": "public.incidencias_ampliaciones",
+      "filas": 36
     },
     {
       "tabla": "public.incidencias_historial",
-      "filas": 1541
+      "filas": 2865
+    },
+    {
+      "tabla": "public.incidencias_seguimiento",
+      "filas": 821
     },
     {
       "tabla": "public.obligaciones_operativas",
-      "filas": 3230
+      "filas": 3710
+    },
+    {
+      "tabla": "public.revisiones_reportes",
+      "filas": 1193
     },
     {
       "tabla": "public.rondas",
-      "filas": 6494
+      "filas": 7454
     },
     {
       "tabla": "public.turnos_historial",
-      "filas": 3294
+      "filas": 3774
     },
     {
       "tabla": "public.vehiculos",
@@ -198,5 +286,5 @@
       "filas": 1411
     }
   ],
-  "filas": 25964
+  "filas": 50690
 }

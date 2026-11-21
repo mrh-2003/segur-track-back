@@ -20,6 +20,7 @@ const comprobarAcceso = async (c, id, u) => {
     )
   ).rows[0];
   if (!t) throw new ErrorNoEncontrado('Turno no encontrado');
+  await require('./acceso-servicios').comprobar(t.servicio_id,u,c);
   if (!esGestor(u) && t.usuario_id !== u.id && t.personal_id !== u.personalId)
     throw new ErrorAutorizacion();
   return t;
@@ -59,6 +60,7 @@ const comprobarAsignacion = async (c, servicioId, personalId) => {
 };
 const crearTurno = async (d, u) =>
   tx(u.id, 'Programación de plaza-turno', async (c) => {
+    await require('./acceso-servicios').comprobar(d.servicioId,u,c);
     const { inicio, fin } = intervalo(d);
     if (!Number.isFinite(+inicio) || !Number.isFinite(+fin))
       throw new ErrorValidacion('Fecha u horario inválidos');
@@ -231,7 +233,7 @@ const opcionesTurno = async (q, u) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new ErrorValidacion('Fecha inválida');
   if ((q.horaInicio || q.horaFin) && (!/^\d{2}:\d{2}(:\d{2})?$/.test(q.horaInicio || '') || !/^\d{2}:\d{2}(:\d{2})?$/.test(q.horaFin || '')))
     throw new ErrorValidacion('Complete ambas horas');
-  const catalogo = await repo.catalogos();
+  const catalogo = await repo.catalogos(u);
   const servicios = catalogo.servicios.filter((s) => s.estado !== 'finalizado' && s.fecha_inicio <= fecha && (!s.fecha_fin || s.fecha_fin >= fecha));
   const ventanas = servicios.map((s) => ({servicio_id:s.id,...intervalo({fecha,horaInicio:q.horaInicio || s.hora_inicio,horaFin:q.horaFin || s.hora_fin})}));
   if (ventanas.some((v) => !Number.isFinite(+v.inicio) || !Number.isFinite(+v.fin))) throw new ErrorValidacion('Fecha u horario inválidos');
@@ -250,7 +252,7 @@ const resultado = async (q) => evaluarFuentes(await repo.fuentes(), q);
 const guardarEvaluacion = async (q, u) => {
   const data = await resultado(q);
   await tx(u.id, 'Evaluación operativo-v4', async (c) => {
-    await c.query('SELECT bi.refrescar()');
+    // El almacén dimensional se actualiza exclusivamente mediante el job o la sincronización BI.
     for (const s of data.tabla)
       await c.query(
         'INSERT INTO evaluaciones_operativas(servicio_id,usuario_id,version,filtros,resultado) VALUES($1,$2,$3,$4,$5)',
@@ -326,6 +328,7 @@ const cambiarTurno = async (id, accion, d, u) =>
   });
 const actualizarTurno = async (id, d, u) =>
   tx(u.id, 'Corrección de programación', async (c) => {
+    await require('./acceso-servicios').comprobar(d.servicioId,u,c);
     const t = await comprobarAcceso(c, id, u);
     if (!esGestor(u)) throw new ErrorAutorizacion();
     if (t.personal_id !== (d.personalId || null))

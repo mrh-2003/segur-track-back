@@ -36,7 +36,7 @@ Para completar una base **ya identificada como demo**, ejecutar `npm run db:demo
 - Un denominador cero produce tasa nula, **Sin casos**, y se excluye del promedio. Si ambos KPI están sin casos con información confirmada, el aporte es cero.
 - Puntaje del criterio = promedio de las tasas aplicables. Riesgo = mín(100, (100 − puntaje) / umbral × 100). Aporte = riesgo × peso. Criticidad = suma de los cinco aportes. Mayor criticidad implica mayor prioridad.
 - `puntaje` se conserva como alias de `criticidad` en el contrato de la API. Las instantáneas históricas conservan su versión. Los nuevos cálculos y guardados usan `operativo-v4`.
-- La vista `vw_bi_kpis_operativos` expone las instantáneas de esta versión sin recalcularlas con otras fórmulas.
+- La vista `vw_bi_kpis_operativos` conserva las instantáneas de esta versión como compatibilidad interna. El nuevo informe Power BI utiliza exclusivamente `dw`, según [POWER_BI_KIMBALL.md](POWER_BI_KIMBALL.md).
 
 ## Instalación y actualización
 

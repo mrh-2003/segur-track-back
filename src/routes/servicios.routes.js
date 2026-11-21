@@ -7,6 +7,18 @@ const { autorizar } = require('../middlewares/auth');
 const { esquemaCrear, esquemaActualizar, esquemaCambiarEstado } = require('../validators/servicios.validator');
 
 const router = Router();
+const acceso=require('../services/acceso-servicios');
+router.use(async(req,res,next)=>{try{
+  req.supervisorAsignado=await acceso.supervisorId(req.usuario);
+  if(req.usuario.rol==='supervisor' && ['POST','PUT'].includes(req.method) && req.body?.supervisorId!==undefined && req.body.supervisorId!==req.supervisorAsignado)
+    throw new (require('../utils/errores').ErrorAutorizacion)('Debe conservarse a usted como supervisor del servicio');
+  if(req.usuario.rol==='supervisor' && req.method==='POST' && req.path==='/') {
+    if(!req.supervisorAsignado) throw new (require('../utils/errores').ErrorAutorizacion)('No tiene un perfil de supervisor asignado');
+    req.body={...req.body,supervisorId:req.supervisorAsignado};
+  }
+  next();
+}catch(e){next(e);}});
+router.param('id',async(req,res,next,id)=>{try{await acceso.comprobar(Number(id),req.usuario);next();}catch(e){next(e);}});
 
 router.get('/', ctrl.listar);
 router.get('/resumen', ctrl.resumen);

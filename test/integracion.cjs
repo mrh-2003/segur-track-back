@@ -146,33 +146,13 @@ const ExcelJS = require('exceljs');
         ),
       /ejecutado/
     );
-    const i =
-      await require('../src/services/incidencias-operativas.service').guardar(
-        null,
-        {
-          tipoIncidenciaId: 1,
-          servicioId: s.id,
-          descripcion: 'Incidencia de prueba transaccional',
-          prioridad: 'alta',
-          responsableId: sup.id,
-        },
-        u.id
-      );
-    assert.equal(i.sla_min, 60);
-    assert.equal(i.responsable_id, sup.id);
-    await require('../src/services/incidencias-operativas.service').guardar(
-      i.id,
-      { estado: 'en_atencion' },
-      u.id
-    );
-    const cerrada =
-      await require('../src/services/incidencias-operativas.service').guardar(
-        i.id,
-        { estado: 'cerrada' },
-        u.id
-      );
-    assert.ok(cerrada.fecha_atencion);
-    assert.ok(cerrada.fecha_cierre);
+    const encargado=(await c.query(`SELECT p.id,sp.servicio_id FROM personal p JOIN usuarios u ON u.id=p.usuario_id JOIN servicio_personal sp ON sp.personal_id=p.id WHERE u.rol='operador' AND u.activo AND NOT u.eliminado AND NOT p.eliminado AND p.estado='activo' AND NOT sp.eliminado LIMIT 1`)).rows[0];
+    const i=await require('../src/services/incidencias-operativas.service').guardar(null,{tipoIncidenciaId:1,servicioId:encargado.servicio_id,descripcion:'Incidencia de prueba transaccional',prioridad:'alta',responsableId:encargado.id},u);
+    assert.equal(i.sla_min,60);assert.equal(i.responsable_id,encargado.id);
+    const flujo=require('../src/services/incidencias-flujo.service');
+    await flujo.actuar(i.id,{accion:'atender'},u);
+    const cerrada=await flujo.actuar(i.id,{accion:'resolver',comentario:'Corrección de prueba completada con evidencia',evidencias:['https://example.test/correccion.png']},u);
+    assert.ok(cerrada.fecha_atencion);assert.ok(cerrada.fecha_cierre);
     const w = new ExcelJS.Workbook();
     await w.xlsx.load(await importar.plantilla());
     const sheet = w.getWorksheet('Tareaje');

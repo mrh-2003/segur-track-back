@@ -1,144 +1,20 @@
 'use strict';
+const svc=require('../services/incidencias.service'),flujo=require('../services/incidencias-flujo.service'),op=require('../services/incidencias-operativas.service');
+const {respuestaExito,respuestaCreado}=require('../utils/respuesta'),{paginacion,metaPaginacion}=require('../utils/paginacion');
+const handler=fn=>async(req,res,next)=>{try{respuestaExito(res,await fn(req));}catch(e){next(e);}};
+exports.listar=async(req,res,next)=>{try{const p=paginacion(req.query),r=await svc.listar({...req.query,...p},req.usuario);respuestaExito(res,r.filas,metaPaginacion(p.pagina,p.limite,r.total));}catch(e){next(e);}};
+exports.resumen=handler(r=>svc.obtenerResumen(r.query,r.usuario));
+exports.recientes=handler(r=>svc.obtenerRecientes(r.usuario));
+exports.obtener=handler(r=>svc.obtenerPorId(Number(r.params.id),r.usuario));
+exports.crear=async(req,res,next)=>{try{respuestaCreado(res,await op.guardar(null,req.body,req.usuario));}catch(e){next(e);}};
+exports.actualizar=handler(r=>op.guardar(Number(r.params.id),r.body,r.usuario));
+exports.asignar=handler(r=>op.guardar(Number(r.params.id),{responsableId:r.body.responsableId},r.usuario));
+exports.actuar=handler(r=>flujo.actuar(Number(r.params.id),r.body,r.usuario));
+exports.cambiarEstado=handler(r=>flujo.actuar(Number(r.params.id),{accion:r.body.estado==='en_atencion'?'atender':r.body.estado==='cerrada'?'resolver':'invalida',comentario:r.body.observacion,evidencias:r.body.evidencias},r.usuario));
+exports.registrarObservacion=handler(r=>flujo.actuar(Number(r.params.id),{accion:'avance',comentario:r.body.observacion,evidencias:r.body.evidencias},r.usuario));
+exports.solicitar=handler(r=>flujo.solicitar(Number(r.params.id),r.body,r.usuario));
+exports.decidir=handler(r=>flujo.decidir(Number(r.params.id),Number(r.params.solicitudId),r.body,r.usuario));
+exports.eliminar=handler(r=>svc.eliminar(Number(r.params.id),r.usuario.id));
+exports.listarTipos=handler(()=>svc.listarTipos());
 
-const incidenciasService = require('../services/incidencias.service');
-const { respuestaExito, respuestaCreado } = require('../utils/respuesta');
-const { paginacion, metaPaginacion } = require('../utils/paginacion');
-
-const listar = async (req, res, next) => {
-  try {
-    const { limite, offset, pagina } = paginacion(req.query);
-    const { filas, total } = await incidenciasService.listar({
-      limite,
-      offset,
-      q: req.query.q || null,
-      tipoId: req.query.tipoId ? parseInt(req.query.tipoId, 10) : null,
-      estado: req.query.estado || null,
-      servicioId: req.query.servicioId
-        ? parseInt(req.query.servicioId, 10)
-        : null,
-    });
-    respuestaExito(res, filas, metaPaginacion(pagina, limite, total));
-  } catch (err) {
-    next(err);
-  }
-};
-
-const resumen = async (req, res, next) => {
-  try {
-    respuestaExito(res, await incidenciasService.obtenerResumen(req.query));
-  } catch (err) {
-    next(err);
-  }
-};
-
-const recientes = async (req, res, next) => {
-  try {
-    respuestaExito(res, await incidenciasService.obtenerRecientes());
-  } catch (err) {
-    next(err);
-  }
-};
-
-const obtener = async (req, res, next) => {
-  try {
-    respuestaExito(
-      res,
-      await incidenciasService.obtenerPorId(parseInt(req.params.id, 10))
-    );
-  } catch (err) {
-    next(err);
-  }
-};
-
-const crear = async (req, res, next) => {
-  try {
-    respuestaCreado(
-      res,
-      await require('../services/incidencias-operativas.service').guardar(
-        null,
-        req.body,
-        req.usuario.id
-      )
-    );
-  } catch (err) {
-    next(err);
-  }
-};
-
-const actualizar = async (req, res, next) => {
-  try {
-    respuestaExito(
-      res,
-      await require('../services/incidencias-operativas.service').guardar(
-        parseInt(req.params.id, 10),
-        req.body,
-        req.usuario.id
-      )
-    );
-  } catch (err) {
-    next(err);
-  }
-};
-
-const cambiarEstado = async (req, res, next) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const resultado =
-      await require('../services/incidencias-operativas.service').guardar(
-        id,
-        req.body,
-        req.usuario.id
-      );
-    respuestaExito(res, resultado);
-  } catch (err) {
-    next(err);
-  }
-};
-
-const registrarObservacion = async (req, res, next) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const resultado =
-      await require('../services/incidencias-operativas.service').guardar(
-        id,
-        { observacion: req.body.observacion },
-        req.usuario.id
-      );
-    respuestaExito(res, resultado);
-  } catch (err) {
-    next(err);
-  }
-};
-
-const eliminar = async (req, res, next) => {
-  try {
-    await incidenciasService.eliminar(
-      parseInt(req.params.id, 10),
-      req.usuario.id
-    );
-    respuestaExito(res, { mensaje: 'Incidencia eliminada' });
-  } catch (err) {
-    next(err);
-  }
-};
-
-const listarTipos = async (req, res, next) => {
-  try {
-    respuestaExito(res, await incidenciasService.listarTipos());
-  } catch (err) {
-    next(err);
-  }
-};
-
-module.exports = {
-  listar,
-  resumen,
-  recientes,
-  obtener,
-  crear,
-  actualizar,
-  cambiarEstado,
-  registrarObservacion,
-  eliminar,
-  listarTipos,
-};
+exports.responsables=handler(r=>op.responsables(r.query.servicioId,r.usuario));

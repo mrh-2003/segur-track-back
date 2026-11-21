@@ -1,6 +1,6 @@
 'use strict';
 // Datos sintéticos compartidos por ambos generadores, siempre dentro de su transacción.
-module.exports=async(c)=>{
+module.exports=async(c,opciones={})=>{
   if(!(await c.query('SELECT datos_demo FROM configuracion_operativa WHERE id=1')).rows[0]?.datos_demo) throw new Error('Se requiere una base de demostración');
     const u=(await c.query("SELECT id FROM usuarios WHERE rol='administrador' AND NOT eliminado ORDER BY id LIMIT 1")).rows[0];
     await c.query("SELECT set_config('app.usuario_id',$1,true),set_config('app.motivo','Datos de prueba KPI: programación y ejecución sintéticas',true)",[String(u.id)]);
@@ -56,6 +56,19 @@ module.exports=async(c)=>{
     // Solo el escenario demo: validar sus casos vencidos pendientes para probar la evaluación completa.
     await c.query(`UPDATE turnos t SET asistencia_validada=TRUE FROM vw_operacion_turnos v
       WHERE v.id=t.id AND v.fin_programado<=NOW() AND NOT t.asistencia_validada`);
+    await require('../src/services/warehouse.service').inicializarCatalogo(c);
+    await c.query(`UPDATE obligaciones_operativas SET primera_entrega_en=COALESCE(primera_entrega_en,fecha_completada)
+      WHERE tipo='reporte' AND origen='demo_kpis_20261118' AND fecha_completada IS NOT NULL`);
+    await c.query(`INSERT INTO revisiones_reportes(reporte_id,version_entrega,estado,observacion,revisado_por,fecha_entrega,contenido,evidencias,revisado_en)
+      SELECT o.id,o.version_entrega,CASE WHEN MOD(o.id,9)=0 THEN 'observado' ELSE 'aprobado' END,
+      CASE WHEN MOD(o.id,9)=0 THEN 'DEMO: ampliar las novedades del parte operativo' END,$1,o.fecha_completada,o.resultado,o.evidencias,o.fecha_completada+INTERVAL '30 minutes'
+      FROM obligaciones_operativas o WHERE o.tipo='reporte' AND o.origen='demo_kpis_20261118'
+      AND o.fecha_completada+INTERVAL '30 minutes'<=NOW() AND MOD(o.id,5)<>0 ON CONFLICT DO NOTHING`,[u.id]);
+    await c.query(`UPDATE obligaciones_operativas o SET estado_revision=r.estado,revisado_por=r.revisado_por,fecha_revision=r.revisado_en
+      FROM revisiones_reportes r WHERE r.reporte_id=o.id AND r.version_entrega=o.version_entrega
+      AND o.origen='demo_kpis_20261118' AND o.estado_revision='pendiente'`);
+    await require('./preparar-operadores-demo.cjs')(c,opciones);
+    await require('./datos-flujo-incidencias-demo.cjs')(c,opciones);
     await c.query('SELECT bi.refrescar()');
 
 };

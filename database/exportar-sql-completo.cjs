@@ -8,7 +8,7 @@ const env = require('../src/config/env');
 const pool = require('../src/config/db');
 const bin = process.env.PG_DUMP || 'C:/Program Files/PostgreSQL/18/bin/pg_dump.exe';
 const carpeta = path.join(__dirname, 'instalacion');
-const limpiar = (s) => s.replace(/^\\(?:un)?restrict\b.*\r?\n/gm, '').replace(/^ALTER TABLE ONLY .+ ALTER COLUMN .+ SET \(pg_attver=\d+\);\r?\n/gm, '').replace(/^-- PostgreSQL database dump complete[\s\S]*$/, '-- Fin de la exportación.\n');
+const limpiar = (s) => s.replace(/\r\n/g, '\n').replace(/^[\t ]+$/gm, '').replace(/^\\(?:un)?restrict\b.*\r?\n/gm, '').replace(/^ALTER TABLE ONLY .+ ALTER COLUMN .+ SET \(pg_attver=\d+\);\r?\n/gm, '').replace(/^-- PostgreSQL database dump complete[\s\S]*$/, '-- Fin de la exportación.\n');
 
 (async () => {
   const c = await pool.connect();
@@ -17,11 +17,11 @@ const limpiar = (s) => s.replace(/^\\(?:un)?restrict\b.*\r?\n/gm, '').replace(/^
     const demo = (await c.query('SELECT datos_demo FROM configuracion_operativa WHERE id=1')).rows[0];
     if (!demo?.datos_demo) throw new Error('La base no está identificada como demostración');
     const { snapshot, fecha } = (await c.query('SELECT pg_export_snapshot() snapshot,NOW() fecha')).rows[0];
-    const tablas = (await c.query("SELECT schemaname,tablename FROM pg_tables WHERE schemaname IN ('public','bi') ORDER BY schemaname,tablename")).rows;
+    const tablas = (await c.query("SELECT schemaname,tablename FROM pg_tables WHERE schemaname IN ('public','bi','dw','etl') ORDER BY schemaname,tablename")).rows;
     const usuarios = (await c.query('SELECT id,correo,activo FROM usuarios ORDER BY id')).rows;
     const conteos = [];
     const ejecutar = (opciones) => {
-      const r = spawnSync(bin, ['--no-owner','--no-privileges','--lock-wait-timeout=10s','--schema=public','--schema=bi','--encoding=UTF8',`--snapshot=${snapshot}`,...opciones], {
+      const r = spawnSync(bin, ['--no-owner','--no-privileges','--lock-wait-timeout=10s','--schema=public','--schema=bi','--schema=dw','--schema=etl','--encoding=UTF8',`--snapshot=${snapshot}`,...opciones], {
         env:{...process.env,PGHOST:env.DB_HOST,PGPORT:String(env.DB_PORT),PGDATABASE:env.DB_NAME,PGUSER:env.DB_USER,PGPASSWORD:env.DB_PASSWORD,PGSSLMODE:env.DB_HOST==='localhost' ? 'prefer' : 'require'},
         encoding:'utf8',maxBuffer:100*1024*1024,windowsHide:true,timeout:120000,
       });
@@ -37,7 +37,7 @@ const limpiar = (s) => s.replace(/^\\(?:un)?restrict\b.*\r?\n/gm, '').replace(/^
     if(!await bcrypt.compare(clave,hash)) throw new Error('Hash de demostración inválido');
     const quote = (v) => v === null ? 'NULL' : "'"+String(v).replace(/'/g,"''")+"'";
     const id = (v) => '"'+v.replace(/"/g,'""')+'"';
-    const referencias = (await c.query("SELECT ns.nspname||'.'||cl.relname hijo,np.nspname||'.'||cp.relname padre FROM pg_constraint co JOIN pg_class cl ON cl.oid=co.conrelid JOIN pg_namespace ns ON ns.oid=cl.relnamespace JOIN pg_class cp ON cp.oid=co.confrelid JOIN pg_namespace np ON np.oid=cp.relnamespace WHERE co.contype='f' AND ns.nspname IN ('public','bi')")).rows;
+    const referencias = (await c.query("SELECT ns.nspname||'.'||cl.relname hijo,np.nspname||'.'||cp.relname padre FROM pg_constraint co JOIN pg_class cl ON cl.oid=co.conrelid JOIN pg_namespace ns ON ns.oid=cl.relnamespace JOIN pg_class cp ON cp.oid=co.confrelid JOIN pg_namespace np ON np.oid=cp.relnamespace WHERE co.contype='f' AND ns.nspname IN ('public','bi','dw','etl')")).rows;
     const pendientes = [...tablas], orden = [], terminadas = new Set();
     while(pendientes.length) {
       const i=pendientes.findIndex(t=>referencias.filter(r=>r.hijo===t.schemaname+'.'+t.tablename && r.padre!==r.hijo).every(r=>terminadas.has(r.padre)));
@@ -59,7 +59,7 @@ const limpiar = (s) => s.replace(/^\\(?:un)?restrict\b.*\r?\n/gm, '').replace(/^
         partes.push('INSERT INTO '+nombre+' ('+columnas.map(id).join(', ')+') VALUES\n'+valores.join(',\n')+';');
       }
     }
-    const secuencias=(await c.query("SELECT sequence_schema,sequence_name FROM information_schema.sequences WHERE sequence_schema IN ('public','bi') ORDER BY sequence_schema,sequence_name")).rows;
+    const secuencias=(await c.query("SELECT sequence_schema,sequence_name FROM information_schema.sequences WHERE sequence_schema IN ('public','bi','dw','etl') ORDER BY sequence_schema,sequence_name")).rows;
     partes.push('\n-- Secuencias: próximos IDs y códigos de incidencias.');
     for(const s of secuencias) {
       const nombre=id(s.sequence_schema)+'.'+id(s.sequence_name);

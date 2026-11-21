@@ -10,12 +10,14 @@ const r = Router();
 const gestor=autorizar('administrador','jefe_operaciones','supervisor');
 r.param('id', require('../middlewares/identificador'));
 r.param('registroId', (req,res,next,id) => /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id)>0 ? next() : next(new (require('../utils/errores').ErrorValidacion)('ID inválido')));
+r.use('/servicios/:id',async(req,res,next)=>{try{await require('../services/acceso-servicios').comprobar(Number(req.params.id),req.usuario);next();}catch(e){next(e);}});
 const handler = (fn) => async (req,res,next) => { try { respuestaExito(res, await fn(req)); } catch(e) { next(e); } };
 r.get('/servicios/:id/plan', handler((r)=>plan.obtener(Number(r.params.id))));
 r.put('/servicios/:id/plan',gestor,validar(z.object({
   plantillas:z.array(z.object({id:z.number().int().positive().optional(),tipo:z.enum(['actividad','ronda','reporte']),descripcion:z.string().trim().min(3).max(1000),minutosDesdeInicio:z.number().int().min(0).max(1440).nullable(),intervaloMin:z.number().int().min(1).max(1440).nullable()})).max(30),
   consignas:z.array(z.object({id:z.number().int().positive().optional(),descripcion:z.string().trim().min(3).max(1000)})).max(50),
 })),handler((r)=>plan.guardar(Number(r.params.id),r.body,r.usuario)));
+r.patch('/turnos/:id/:registroId/revision',gestor,validar(z.object({estado:z.enum(['aprobado','observado']),observacion:z.string().trim().max(3000).optional()})),handler(r=>require('../services/reportes-operativos.service').revisar(Number(r.params.id),Number(r.params.registroId),r.body,r.usuario)));
 r.get('/turnos/:id', handler((r) => svc.listar(Number(r.params.id),r.usuario)));
 r.post('/turnos/:id', validar(z.discriminatedUnion('tipo', [
   z.object({tipo:z.literal('validar_plan')}),

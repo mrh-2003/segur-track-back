@@ -83,7 +83,9 @@ const detallePorServicio = async (req, res, next) => {
       res,
       await multicriterioService.obtenerDetallePorServicio(
         parseInt(req.params.id, 10),
-        req.query
+        req.query,
+        req.usuario,
+        req.params.personalId?Number(req.params.personalId):null
       )
     );
   } catch (err) {

@@ -270,10 +270,11 @@ const desasignarPersonal = async (asignacionId, usuarioId) => {
   return rows[0] || null;
 };
 
-const listarTodasAsignaciones = async ({ servicioId, personalId, limite, offset }) => {
+const listarTodasAsignaciones = async ({ servicioId, personalId, supervisorId, limite, offset }) => {
   const condiciones = ['sp.eliminado = FALSE', 's.eliminado = FALSE', 'p.eliminado = FALSE'];
   const valores = [];
   let idx = 1;
+  if(supervisorId){condiciones.push(`s.supervisor_id=${idx++}`);valores.push(supervisorId);}
   if (servicioId) { condiciones.push(`sp.servicio_id = $${idx}`); valores.push(servicioId); idx++; }
   if (personalId) { condiciones.push(`sp.personal_id = $${idx}`); valores.push(personalId); idx++; }
   const where = condiciones.join(' AND ');

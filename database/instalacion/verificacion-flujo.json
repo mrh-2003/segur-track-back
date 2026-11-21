@@ -1,0 +1,16 @@
+{
+  "fecha": "2026-11-21T16:36:43.628Z",
+  "base": "PostgreSQL temporal local",
+  "navegador": false,
+  "migraciones": [
+    "014",
+    "015"
+  ],
+  "suites": [
+    "incidencias",
+    "kpis",
+    "integración operativa",
+    "warehouse"
+  ],
+  "resultado": "OK"
+}

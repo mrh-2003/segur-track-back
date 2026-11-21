@@ -631,7 +631,7 @@ async function generar() {
                   ? 'El supervisor está coordinando la atención del caso de prueba.'
                   : 'Pendiente de intervención del responsable asignado.',
               registrado_por: 4,
-              responsable_id: s.supervisor_id,
+              responsable_id: 6 + (s.id - 1) * 4 + franja * 2,
               sla_min: sla,
               creado_en: registro,
               actualizado_en: cierre || realAtencion || registro,
@@ -867,7 +867,8 @@ async function generar() {
       [hoy]
     );
     await c.query('SELECT bi.refrescar()');
-    await require('./datos-kpi-demo.cjs')(c);
+    // El generador usa IDs explícitos y ajusta sus secuencias al final; el ensayo no consume IDs.
+    await require('./datos-kpi-demo.cjs')(c,{idsExplicitos:true});
     const cargar = async () => ({
       servicios: (
         await c.query(
