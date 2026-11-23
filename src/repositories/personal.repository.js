@@ -3,7 +3,7 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 
-const listar = async ({ limite, offset, q, estado }) => {
+const listar = async ({ limite, offset, q, estado, usuario }) => {
   const condiciones = ['p.eliminado = FALSE'];
   const valores = [];
   let idx = 1;
@@ -19,6 +19,7 @@ const listar = async ({ limite, offset, q, estado }) => {
     idx++;
   }
 
+  if(usuario && ['supervisor','operador'].includes(usuario.rol)){ condiciones.push(require('../services/acceso-servicios').alcancePersonal(usuario,`$${idx}`));valores.push(usuario.id);idx++; }
   const where = condiciones.join(' AND ');
 
   const { rows: [{ total }] } = await pool.query(

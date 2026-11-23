@@ -5,6 +5,15 @@ const { comprobarAcceso } = require('./operacion.service');
 const { ErrorValidacion, ErrorNoEncontrado, ErrorAutorizacion, ErrorConflicto } = require('../utils/errores');
 const esGestor=(u)=>['administrador','jefe_operaciones','supervisor'].includes(u.rol);
 
+const motivoBloqueo=(t,calendario)=>{
+  if(!t.personal_id || t.relevo_pendiente)return 'Primero asigne un agente disponible al turno.';
+  if(!['confirmado','pendiente','cumplido'].includes(t.estado))return 'Primero confirme la asignación del turno.';
+  if(+new Date(calendario.inicio_programado)>+new Date(calendario.corte))return 'Este turno todavía no comienza. La ejecución estará disponible desde su inicio programado.';
+  if(!t.ingreso_real)return 'Primero registre el ingreso del agente para ejecutar las obligaciones.';
+  if(+new Date(t.ingreso_real)>+new Date(calendario.corte))return 'El ingreso registrado es futuro; solicite su corrección a supervisión.';
+  return null;
+};
+exports.motivoBloqueo=motivoBloqueo;
 exports.listar = async (id, u) => {
   const t=await comprobarAcceso(pool, id, u);
   const [turno, obligaciones, rondas, consignas, catalogo, revisiones] = await Promise.all([
@@ -16,10 +25,8 @@ exports.listar = async (id, u) => {
     pool.query('SELECT r.*,u.nombre AS revisor FROM revisiones_reportes r JOIN obligaciones_operativas o ON o.id=r.reporte_id JOIN usuarios u ON u.id=r.revisado_por WHERE o.turno_id=$1 ORDER BY r.revisado_en',[id]),
   ]);
   const calendario=turno.rows[0];
-  const futuro=+new Date(calendario.inicio_programado)>+new Date(calendario.corte);
-  const ingresoValido=t.ingreso_real && +new Date(t.ingreso_real)<=+new Date(calendario.corte);
-  return { ...calendario,puede_registrar:!futuro && (esGestor(u)||Boolean(ingresoValido)),
-    motivo_bloqueo:futuro?'Este turno todavía no comienza. Puede consultar su programación; la ejecución estará disponible desde su inicio.':!esGestor(u)&&!ingresoValido?'Registre un ingreso válido antes de ejecutar las obligaciones.':null,
+  const bloqueo=motivoBloqueo(t,calendario);
+  return { ...calendario,puede_registrar:!bloqueo,motivo_bloqueo:bloqueo,
     obligaciones: obligaciones.rows, rondas: rondas.rows, consignas: consignas.rows,catalogoConsignas:catalogo.rows,revisiones:revisiones.rows };
 };
 
@@ -37,8 +44,7 @@ exports.registrar = (id, d, u) => tx(u.id, 'Registro de datos KPI: ' + d.tipo, a
   }
   if (d.tipo === 'consigna') {
     const calendario=(await c.query('SELECT inicio_programado,NOW() AS corte FROM vw_operacion_turnos WHERE id=$1',[id])).rows[0];
-    if(+new Date(calendario.inicio_programado)>+new Date(calendario.corte)) throw new ErrorConflicto('El turno todavía no comienza; aún no puede verificar consignas.');
-    if(!esGestor(u) && !t.ingreso_real) throw new ErrorConflicto('Registre el ingreso antes de verificar consignas');
+    const bloqueo=motivoBloqueo(t,calendario);if(bloqueo)throw new ErrorConflicto(bloqueo);
     let consigna;
     if(d.consignaId) {
       consigna=(await c.query('SELECT id FROM consignas WHERE id=$1 AND servicio_id=$2 AND activo AND NOT eliminado',[d.consignaId,t.servicio_id])).rows[0];
@@ -67,11 +73,8 @@ exports.actualizar = (turnoId, id, d, u) => tx(u.id, 'Seguimiento de obligación
     return (await c.query(`UPDATE ${tabla} SET eliminado=TRUE,eliminado_por=$3,actualizado_en=NOW() WHERE id=$1 AND turno_id=$2 RETURNING *`, [id,turnoId,u.id])).rows[0];
   }
   if (item.fecha_completada && !(item.tipo==='reporte' && item.estado_revision==='observado')) throw new ErrorConflicto('La obligación ya fue completada. Actualice el detalle para consultar su registro.');
-  if(!esGestor(u) && !t.ingreso_real) throw new ErrorConflicto('Registre el ingreso antes de ejecutar el turno');
   const calendario=(await c.query('SELECT inicio_programado,NOW() AS corte FROM vw_operacion_turnos WHERE id=$1',[turnoId])).rows[0];
-  if(+new Date(calendario.inicio_programado)>+new Date(calendario.corte))
-    throw new ErrorConflicto('El turno todavía no comienza. Registre la ejecución a partir de su inicio programado.');
-  if(!esGestor(u) && +new Date(t.ingreso_real)>+new Date(calendario.corte)) throw new ErrorConflicto('El ingreso registrado es futuro; solicite su corrección a supervisión.');
+  const bloqueo=motivoBloqueo(t,calendario);if(bloqueo)throw new ErrorConflicto(bloqueo);
   if(item.tipo==='reporte' && (!d.resultado || d.resultado.trim().length<3)) throw new ErrorValidacion('Escriba el contenido del reporte operativo');
   const momento=d.fechaCompletada || calendario.corte;
   if(!Number.isFinite(+new Date(momento)) || +new Date(momento)>+new Date(calendario.corte) || +new Date(momento)<+new Date(calendario.inicio_programado))

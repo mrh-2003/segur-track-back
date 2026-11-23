@@ -60,7 +60,7 @@ const evaluar = async (req, res, next) => {
 
 const resultado = async (req, res, next) => {
   try {
-    respuestaExito(res, await multicriterioService.obtenerResultado(req.query));
+    respuestaExito(res, await multicriterioService.obtenerResultado(req.query, req.usuario));
   } catch (err) {
     next(err);
   }
@@ -70,7 +70,7 @@ const indicadores = async (req, res, next) => {
   try {
     respuestaExito(
       res,
-      await multicriterioService.obtenerIndicadores(req.query)
+      await multicriterioService.obtenerIndicadores(req.query, req.usuario)
     );
   } catch (err) {
     next(err);

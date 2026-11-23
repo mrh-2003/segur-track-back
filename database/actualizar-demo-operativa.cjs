@@ -9,6 +9,7 @@ const fs=require('node:fs'),path=require('node:path'),pool=require('../src/confi
   await c.query("SELECT set_config('app.usuario_id',$1,true),set_config('app.motivo','Completar escenario de demostración: responsables operativos y estados de incidencias',true)",[String(admin)]);
   const cuentas=await require('./preparar-operadores-demo.cjs')(c);
   const escenarios=await require('./escenarios-incidencias-demo.cjs')(c);
+  await require('./regularizar-flujos-demo.cjs').regularizar(c);
   await c.query('COMMIT');console.log(JSON.stringify({cuentas,escenarios}));
  }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
  console.log(JSON.stringify(await require('../src/services/warehouse.service').sincronizar({origen:'actualizacion_demo'})));

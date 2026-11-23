@@ -3,6 +3,7 @@
 const pool = require('../config/db');
 
 const listar = async ({
+  permitidos,
   servicioId,
   protocoloId,
   personalId,
@@ -45,6 +46,7 @@ const listar = async ({
     idx++;
   }
 
+  if(permitidos!==null && permitidos!==undefined){condiciones.push(`e.servicio_id=ANY($${idx}::int[])`);params.push(permitidos);idx++;}
   const where = condiciones.join(' AND ');
 
   const {

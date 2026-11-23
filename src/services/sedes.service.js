@@ -2,7 +2,7 @@
 
 const sedesRepo = require('../repositories/sedes.repository');
 const actividadRepo = require('../repositories/actividad.repository');
-const { ErrorNoEncontrado } = require('../utils/errores');
+const { ErrorNoEncontrado, ErrorValidacion, ErrorConflicto } = require('../utils/errores');
 
 const listar = async (filtros) => sedesRepo.listar(filtros);
 
@@ -14,7 +14,13 @@ const obtenerPorId = async (id) => {
   return sede;
 };
 
+const validarResponsables=async(datos)=>{
+ const pool=require('../config/db');
+ if(!(await pool.query('SELECT 1 FROM clientes WHERE id=$1 AND NOT eliminado',[datos.clienteId])).rowCount)throw new ErrorValidacion('Cliente no válido');
+ if(!(await pool.query("SELECT 1 FROM personal WHERE id=$1 AND NOT eliminado AND estado='activo' AND cargo='supervisor'",[datos.supervisorId])).rowCount)throw new ErrorValidacion('Seleccione un supervisor activo');
+};
 const crear = async (datos, usuarioSolicitante) => {
+  await validarResponsables(datos);
   const sede = await sedesRepo.crear(datos);
   await actividadRepo.registrar({
     tipo: 'sede_creada',
@@ -25,6 +31,8 @@ const crear = async (datos, usuarioSolicitante) => {
 };
 
 const actualizar = async (id, datos, usuarioSolicitante) => {
+  await validarResponsables(datos);
+  if((await require('../config/db').query('SELECT 1 FROM servicios WHERE sede_id=$1 AND NOT eliminado AND cliente_id<>$2',[id,datos.clienteId])).rowCount)throw new ErrorConflicto('Esta sede tiene servicios de otro cliente. Revise sus asociaciones antes de cambiar el cliente');
   const sede = await sedesRepo.actualizar(id, datos);
   if (!sede) throw new ErrorNoEncontrado('Sede no encontrada');
   await actividadRepo.registrar({

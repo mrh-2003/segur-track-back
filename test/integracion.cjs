@@ -106,10 +106,10 @@ const ExcelJS = require('exceljs');
     await c.query('UPDATE personal SET horario_inicio=NULL,horario_fin=NULL WHERE id=$1',[p.id]);
     const abierto = await svc.crearTurno({...d,fecha:'2024-01-04'},u);
     await c.query("UPDATE turnos SET estado='confirmado',ingreso_real=NOW()-INTERVAL '1 hour',asistencia_validada=TRUE,evidencias=$2 WHERE id=$1",[abierto.id,JSON.stringify(['/demo/evidencia-operativa.svg?turno=prueba'])]);
-    const salida = await svc.asistencia(abierto.id,{accion:'salida'},u);
+    const salida = await svc.asistencia(abierto.id,{accion:'salida',ubicacion:{latitud:-12.05,longitud:-77.04,precision:8}},u);
     assert.ok(salida.salida_real);
     assert.equal(salida.asistencia_validada,false);
-    await assert.rejects(() => svc.asistencia(abierto.id,{accion:'salida'},u),/registró la salida/);
+    await assert.rejects(() => svc.asistencia(abierto.id,{accion:'salida',ubicacion:{latitud:-12.05,longitud:-77.04,precision:8}},u),/registró la salida/);
     await assert.rejects(() => svc.cambiarTurno(abierto.id,'cumplir',{evidencias:['javascript:alert(1)']},u),/HTTPS/);
     await c.query('UPDATE configuracion_operativa SET datos_demo=TRUE WHERE id=1');
     await assert.rejects(() => svc.cambiarTurno(abierto.id,'cumplir',{evidencias:['/demo/evidencia-operativa.svg?turno=no-registrado']},u),/HTTPS/);
@@ -201,7 +201,7 @@ const ExcelJS = require('exceljs');
     assert.equal(result.turnos, 2);
     assert.equal(result.serviciosNuevos, 1);
     assert.deepEqual(await importar.confirmar(lote.id, u), result);
-    const mc = await svc.resultado({ periodo: 'todos' });
+    const mc = await svc.resultado({ periodo: 'todos' },u);
     assert.ok(mc.tabla.some((x) => x.criterios.length === 5));
     assert.ok(
       (await c.query('SELECT COUNT(*)::int AS n FROM bi.hecho_turno')).rows[0]

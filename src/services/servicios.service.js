@@ -10,8 +10,8 @@ const { ErrorNoEncontrado, ErrorConflicto } = require('../utils/errores');
 const listar = async (filtros, usuario) => {
   const parametros = { ...filtros };
   if(usuario?.rol==='supervisor')parametros.supervisorId=(await require('./acceso-servicios').supervisorId(usuario)) || -1;
-  if (usuario && usuario.rol === 'operador' && usuario.personalId) {
-    parametros.personalId = usuario.personalId;
+  if (usuario?.rol === 'operador') {
+    parametros.personalId = (await require('../config/db').query('SELECT id FROM personal WHERE usuario_id=$1 AND NOT eliminado',[usuario.id])).rows[0]?.id || -1;
   }
   return serviciosRepo.listar(parametros);
 };
@@ -24,7 +24,13 @@ const obtenerPorId = async (id) => {
   return s;
 };
 
+const validarSede=async(datos)=>{
+ const sede=await require('../repositories/sedes.repository').obtenerPorId(datos.sedeId);
+ if(!sede || !sede.cliente_id || sede.cliente_id!==datos.clienteId)throw new ErrorConflicto('Seleccione una sede asociada al cliente');
+ return {...datos,supervisorId:datos.supervisorId || sede.supervisor_id};
+};
 const crear = async (datos, usuarioSolicitante) => {
+  datos=await validarSede(datos);
   const supervisor = await personalRepo.obtenerPorId(datos.supervisorId);
   if (!supervisor || supervisor.cargo !== 'supervisor') {
     throw new ErrorConflicto('El supervisor asignado debe tener cargo de supervisor');
@@ -42,8 +48,11 @@ const crear = async (datos, usuarioSolicitante) => {
 };
 
 const actualizar = async (id, datos, usuario) => {
+  datos=await validarSede(datos);
   const actual = await serviciosRepo.obtenerPorId(id);
   if (!actual) throw new ErrorNoEncontrado('Servicio no encontrado');
+  const supervisor=await personalRepo.obtenerPorId(datos.supervisorId);
+  if(!supervisor || supervisor.cargo!=='supervisor' || supervisor.estado!=='activo')throw new ErrorConflicto('Seleccione un supervisor activo');
   const s = await serviciosRepo.actualizar(id, datos);
   await actividadRepo.registrar({
     tipo: 'servicio_actualizado',
@@ -121,12 +130,13 @@ const crearRequerimiento = async (servicioId, datos, usuario) => {
   return req;
 };
 
-const eliminarRequerimiento = async (id, usuario) => {
+const eliminarRequerimiento = async (id, usuario, servicioId) => {
+  if(!(await serviciosRepo.listarRequerimientos(servicioId)).some(r=>r.id===id))throw new ErrorNoEncontrado('Requerimiento no encontrado en este servicio');
   await serviciosRepo.eliminarRequerimiento(id, usuario.id);
   return { id };
 };
 
-const obtenerDetalleOperativo = async (servicioId) => {
+const obtenerDetalleOperativo = async (servicioId, usuario) => {
   const servicio = await obtenerPorId(servicioId);
   const [personalAsignado, protocolos, requerimientos, { filas: evidencias }, { filas: incidencias }] = await Promise.all([
     serviciosRepo.listarPersonalAsignado(servicioId),
@@ -136,6 +146,11 @@ const obtenerDetalleOperativo = async (servicioId) => {
     incidenciasRepo.listar({ servicioId, limite: 100 }),
   ]);
 
+  if(usuario?.rol==='operador'){
+    return {servicio,personalAsignado:[],protocolos,requerimientos,
+      evidencias:evidencias.filter(e=>e.personal_id===usuario.personalId),
+      incidencias:incidencias.filter(i=>i.registrado_por===usuario.id||i.responsable_id===usuario.personalId)};
+  }
   return {
     servicio,
     personalAsignado,
@@ -148,6 +163,7 @@ const obtenerDetalleOperativo = async (servicioId) => {
 
 const asignarPersonal = async (servicioId, personalId, usuario) => {
   const servicio = await obtenerPorId(servicioId);
+  if(usuario.rol==='supervisor')await require('./acceso-servicios').comprobarPersonal(personalId,usuario);
   const persona = await personalRepo.obtenerPorId(personalId);
   if (!persona || persona.estado !== 'activo') {
     throw new ErrorConflicto('El personal seleccionado no se encuentra disponible');
@@ -168,6 +184,8 @@ const asignarPersonal = async (servicioId, personalId, usuario) => {
 
 const desasignarPersonal = async (servicioId, asignacionId, usuario) => {
   const servicio = await obtenerPorId(servicioId);
+  const asignados=await serviciosRepo.listarPersonalAsignado(servicioId);
+  if(!asignados.some(p=>p.asignacion_id===asignacionId))throw new ErrorNoEncontrado('Asignación no encontrada en este servicio');
   const resultado = await serviciosRepo.desasignarPersonal(asignacionId, usuario.id);
   if (!resultado) throw new ErrorNoEncontrado('Asignación no encontrada');
   await actividadRepo.registrar({

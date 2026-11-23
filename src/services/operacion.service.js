@@ -20,12 +20,12 @@ const comprobarAcceso = async (c, id, u) => {
     )
   ).rows[0];
   if (!t) throw new ErrorNoEncontrado('Turno no encontrado');
-  await require('./acceso-servicios').comprobar(t.servicio_id,u,c);
+  if(u.rol!=='operador')await require('./acceso-servicios').comprobar(t.servicio_id,u,c);
   if (!esGestor(u) && t.usuario_id !== u.id && t.personal_id !== u.personalId)
     throw new ErrorAutorizacion();
   return t;
 };
-const disponible = async (c, personalId, inicio, fin, excluir) => {
+const disponible = async (c, personalId, inicio, fin, excluir, servicioId) => {
   if (!personalId) return;
   await c.query('SELECT pg_advisory_xact_lock($1)', [personalId]);
   const p = (
@@ -37,6 +37,10 @@ const disponible = async (c, personalId, inicio, fin, excluir) => {
   if (!p) throw new ErrorConflicto('El personal no está activo');
   if (!cubreHorario(p, inicio, fin))
     throw new ErrorConflicto('El turno está fuera del horario laboral del personal');
+  if(servicioId && (await c.query(`SELECT 1 FROM vw_operacion_turnos WHERE personal_id=$1 AND servicio_id<>$4 AND ($5::int IS NULL OR id<>$5)
+    AND inicio_programado < (date_trunc('week',($3::timestamptz-INTERVAL '1 microsecond') AT TIME ZONE 'America/Lima')+INTERVAL '1 week') AT TIME ZONE 'America/Lima'
+    AND fin_programado > date_trunc('week',$2::timestamptz AT TIME ZONE 'America/Lima') AT TIME ZONE 'America/Lima' LIMIT 1`,[personalId,inicio,fin,servicioId,excluir||null])).rowCount)
+    throw new ErrorConflicto('El operador ya tiene otro servicio asignado en esa semana');
   const solapa = await c.query(
     `SELECT id FROM vw_operacion_turnos WHERE personal_id=$1 AND ($4::int IS NULL OR id<>$4) AND inicio_programado<$3 AND fin_programado>$2
     UNION ALL SELECT id::int FROM personal_ausencias WHERE personal_id=$1 AND NOT eliminado AND inicio<$3 AND fin>$2`,
@@ -71,13 +75,14 @@ const crearTurno = async (d, u) =>
       if (p?.cargo !== 'agente')
         throw new ErrorAutorizacion('Solo puede asignar agentes');
     }
-    await disponible(c, d.personalId, inicio, fin);
+    await disponible(c, d.personalId, inicio, fin, null, d.servicioId);
     const s = (
       await c.query('SELECT * FROM servicios WHERE id=$1 AND NOT eliminado', [
         d.servicioId,
       ])
     ).rows[0];
     if (!s) throw new ErrorValidacion('Servicio no válido');
+    if(s.sede_id!==d.sedeId)throw new ErrorValidacion('La sede debe coincidir con la del servicio');
     await comprobarAsignacion(c, d.servicioId, d.personalId);
     const creado = (
       await c.query(
@@ -121,7 +126,7 @@ const reasignar = async (id, d, u) =>
       d.personalId,
       intervaloTurno.inicio_programado,
       intervaloTurno.fin_programado,
-      id
+      id, t.servicio_id
     );
     const p = (
       await c.query('SELECT cargo FROM personal WHERE id=$1', [d.personalId])
@@ -142,6 +147,13 @@ const asistencia = async (id, d, u) =>
     if (!t.personal_id)
       throw new ErrorConflicto('Asigne personal antes de registrar asistencia');
     if (d.accion) {
+      if(u.rol==='operador'){
+        const ventana=(await c.query('SELECT inicio_programado,fin_programado FROM vw_operacion_turnos WHERE id=$1',[id])).rows[0];
+        if(d.accion==='ingreso' && (+new Date(ventana.inicio_programado)>Date.now()+30*60000 || +new Date(ventana.fin_programado)<=Date.now()))throw new ErrorConflicto('Puede marcar ingreso desde 30 minutos antes del inicio y hasta el fin del turno');
+      }
+      const ubicacion=d.ubicacion;
+      if(!ubicacion || !Number.isFinite(ubicacion.latitud) || !Number.isFinite(ubicacion.longitud) || Math.abs(ubicacion.latitud)>90 || Math.abs(ubicacion.longitud)>180 || !Number.isFinite(ubicacion.precision) || ubicacion.precision<0)
+        throw new ErrorValidacion('Active la ubicación para registrar su asistencia');
       if (t.asistencia_validada && (d.accion !== 'salida' || t.salida_real || !t.ingreso_real || t.estado === 'cumplido'))
         throw new ErrorConflicto(
           'La asistencia validada solo puede corregirse por supervisión'
@@ -160,8 +172,8 @@ const asistencia = async (id, d, u) =>
       const col = d.accion === 'ingreso' ? 'ingreso_real' : 'salida_real';
       return (
         await c.query(
-          `UPDATE turnos SET ${col}=NOW(),asistencia_validada=FALSE,actualizado_en=NOW() WHERE id=$1 RETURNING *`,
-          [id]
+          `UPDATE turnos SET ${col}=NOW(),${d.accion==='ingreso'?'ingreso_ubicacion':'salida_ubicacion'}=$2::jsonb,asistencia_validada=FALSE,actualizado_en=NOW() WHERE id=$1 RETURNING *`,
+          [id, JSON.stringify(ubicacion)]
         )
       ).rows[0];
     }
@@ -214,7 +226,7 @@ const historial = async (id, u) => {
     )
   ).rows;
 };
-const personalDisponible = async (inicio, fin) => {
+const personalDisponible = async (inicio, fin, u) => {
   const a = inicio ? new Date(inicio) : new Date(),
     b = fin ? new Date(fin) : new Date(+a + 3600000);
   if (!Number.isFinite(+a) || !Number.isFinite(+b) || b <= a)
@@ -222,9 +234,10 @@ const personalDisponible = async (inicio, fin) => {
   return (
     await pool.query(
       `SELECT p.* FROM personal p WHERE NOT p.eliminado AND p.estado='activo' AND p.cargo='agente'
+    AND $3::int IS NOT NULL AND ${require('./acceso-servicios').alcancePersonal(u,'$3')}
     AND NOT EXISTS(SELECT 1 FROM vw_operacion_turnos t WHERE t.personal_id=p.id AND t.inicio_programado<$2 AND t.fin_programado>$1)
     AND NOT EXISTS(SELECT 1 FROM personal_ausencias a WHERE a.personal_id=p.id AND NOT a.eliminado AND a.inicio<$2 AND a.fin>$1) ORDER BY p.apellidos`,
-      [a, b]
+      [a, b, u.id]
     )
   ).rows.filter((p) => cubreHorario(p, a, b));
 };
@@ -237,20 +250,41 @@ const opcionesTurno = async (q, u) => {
   const servicios = catalogo.servicios.filter((s) => s.estado !== 'finalizado' && s.fecha_inicio <= fecha && (!s.fecha_fin || s.fecha_fin >= fecha));
   const ventanas = servicios.map((s) => ({servicio_id:s.id,...intervalo({fecha,horaInicio:q.horaInicio || s.hora_inicio,horaFin:q.horaFin || s.hora_fin})}));
   if (ventanas.some((v) => !Number.isFinite(+v.inicio) || !Number.isFinite(+v.fin))) throw new ErrorValidacion('Fecha u horario inválidos');
-  const candidatos = (await pool.query(`SELECT DISTINCT p.*,x.servicio_id,x.inicio,x.fin
+  const candidatos = (await pool.query(`SELECT DISTINCT p.id,p.nombres,p.apellidos,p.cargo,p.estado,p.horario_inicio,p.horario_fin,p.dias_laborales,x.servicio_id,x.inicio,x.fin,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('servicio',s.nombre,'inicio',t.inicio_programado,'fin',t.fin_programado))
+        FROM vw_operacion_turnos t JOIN servicios s ON s.id=t.servicio_id
+        WHERE t.personal_id=p.id AND t.id<>COALESCE($2::int,0) AND t.inicio_programado<x.fin AND t.fin_programado>x.inicio),'[]'::jsonb) cruces,
+      ARRAY(SELECT DISTINCT s.nombre FROM vw_operacion_turnos t JOIN servicios s ON s.id=t.servicio_id
+        WHERE t.personal_id=p.id AND t.servicio_id<>x.servicio_id AND t.id<>COALESCE($2::int,0)
+        AND t.inicio_programado<(date_trunc('week',(x.fin-INTERVAL '1 microsecond') AT TIME ZONE 'America/Lima')+INTERVAL '1 week') AT TIME ZONE 'America/Lima'
+        AND t.fin_programado>date_trunc('week',x.inicio AT TIME ZONE 'America/Lima') AT TIME ZONE 'America/Lima') otros_servicios,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('motivo',a.motivo,'inicio',a.inicio,'fin',a.fin))
+        FROM personal_ausencias a WHERE a.personal_id=p.id AND NOT a.eliminado AND a.inicio<x.fin AND a.fin>x.inicio),'[]'::jsonb) ausencias
       FROM jsonb_to_recordset($1::jsonb) AS x(servicio_id int,inicio timestamptz,fin timestamptz)
       JOIN servicio_personal sp ON sp.servicio_id=x.servicio_id JOIN personal p ON sp.personal_id=p.id
-      WHERE NOT sp.eliminado AND NOT p.eliminado AND p.estado='activo'
-      AND ($3::boolean=FALSE OR p.cargo='agente')
-      AND NOT EXISTS(SELECT 1 FROM vw_operacion_turnos t WHERE t.personal_id=p.id AND t.id<>COALESCE($2::int,0) AND t.inicio_programado<x.fin AND t.fin_programado>x.inicio)
-      AND NOT EXISTS(SELECT 1 FROM personal_ausencias a WHERE a.personal_id=p.id AND NOT a.eliminado AND a.inicio<x.fin AND a.fin>x.inicio)`,
+      WHERE NOT sp.eliminado AND NOT p.eliminado AND ($3::boolean=FALSE OR p.cargo='agente')
+      ORDER BY p.apellidos,p.nombres`,
       [JSON.stringify(ventanas),q.excluirId || null,u.rol==='supervisor'])).rows;
-  const pares = candidatos.filter((p) => cubreHorario(p,p.inicio,p.fin)).map((p) => ({servicioId:p.servicio_id,personalId:p.id}));
-  return { servicios, compatibilidades: pares };
+  const fechaHora = v => new Date(v).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
+  const personal = candidatos.map(p => {
+    const motivos=[];
+    if(p.estado!=='activo')motivos.push('Personal inactivo.');
+    if(!cubreHorario(p,p.inicio,p.fin)){
+      const dias=['dom','lun','mar','mié','jue','vie','sáb'];
+      const jornada=p.horario_inicio ? p.horario_inicio.slice(0,5)+'–'+p.horario_fin.slice(0,5) : 'sin franja fija';
+      motivos.push('El turno está fuera de su jornada laboral: '+jornada+' ('+(p.dias_laborales||[0,1,2,3,4,5,6]).map(d=>dias[d]).join(', ')+').');
+    }
+    for(const t of p.cruces)motivos.push('Cruce de horarios con '+t.servicio+': '+fechaHora(t.inicio)+' al '+fechaHora(t.fin)+'.');
+    if(p.otros_servicios.length)motivos.push('Tiene otro servicio asignado en la misma semana: '+p.otros_servicios.join(', ')+'.');
+    for(const a of p.ausencias)motivos.push('Ausencia registrada: '+a.motivo+' ('+fechaHora(a.inicio)+' al '+fechaHora(a.fin)+').');
+    return {servicioId:p.servicio_id,personalId:p.id,nombres:p.nombres,apellidos:p.apellidos,cargo:p.cargo,disponible:motivos.length===0,motivos};
+  });
+  const pares=personal.filter(p=>p.disponible).map(p=>({servicioId:p.servicioId,personalId:p.personalId}));
+  return { servicios, compatibilidades: pares, personal };
 };
-const resultado = async (q) => evaluarFuentes(await repo.fuentes(), q);
+const resultado = async (q,u) => evaluarFuentes(await require('./acceso-servicios').filtrarFuentes(await repo.fuentes(),u), q);
 const guardarEvaluacion = async (q, u) => {
-  const data = await resultado(q);
+  const data = await resultado(q,u);
   await tx(u.id, 'Evaluación operativo-v4', async (c) => {
     // El almacén dimensional se actualiza exclusivamente mediante el job o la sincronización BI.
     for (const s of data.tabla)
@@ -338,7 +372,7 @@ const actualizarTurno = async (id, d, u) =>
     if (t.ingreso_real || t.estado === 'cumplido')
       throw new ErrorConflicto('El turno ya tiene ejecución registrada');
     const { inicio, fin } = intervalo(d);
-    await disponible(c, d.personalId, inicio, fin, id);
+    await disponible(c, d.personalId, inicio, fin, id, d.servicioId);
     await comprobarAsignacion(c, d.servicioId, d.personalId);
     return (
       await c.query(

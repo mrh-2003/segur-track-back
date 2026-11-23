@@ -28,7 +28,7 @@ const listarSemana = async (req, res, next) => {
     const sedeId = req.query.sedeId ? parseInt(req.query.sedeId, 10) : null;
     respuestaExito(
       res,
-      await turnosService.listarPorSemana({ desde, hasta, sedeId })
+      await turnosService.listarPorSemana({ desde, hasta, sedeId, usuario: req.usuario, estado: req.query.estado })
     );
   } catch (err) {
     next(err);
@@ -37,7 +37,7 @@ const listarSemana = async (req, res, next) => {
 
 const resumen = async (req, res, next) => {
   try {
-    respuestaExito(res, await turnosService.obtenerResumen());
+    respuestaExito(res, await turnosService.obtenerResumen(req.usuario));
   } catch (err) {
     next(err);
   }
@@ -45,7 +45,7 @@ const resumen = async (req, res, next) => {
 
 const alertas = async (req, res, next) => {
   try {
-    respuestaExito(res, await turnosService.obtenerAlertas());
+    respuestaExito(res, await turnosService.obtenerAlertas(req.usuario));
   } catch (err) {
     next(err);
   }
@@ -167,7 +167,7 @@ const eliminar = async (req, res, next) => {
 
 const listarSedes = async (req, res, next) => {
   try {
-    respuestaExito(res, await turnosService.listarSedes());
+    respuestaExito(res, await turnosService.listarSedes(req.usuario));
   } catch (err) {
     next(err);
   }

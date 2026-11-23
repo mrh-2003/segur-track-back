@@ -51,6 +51,7 @@ const migrar=require('../src/config/migrar');
       (SELECT MIN(vigente_desde)-1 FROM metas_bi WHERE codigo=$1 AND vigente_desde>(DATE_TRUNC('month',CURRENT_DATE)-INTERVAL '5 months')::date),$3
       WHERE NOT EXISTS(SELECT 1 FROM metas_bi WHERE codigo=$1 AND vigente_desde<=(DATE_TRUNC('month',CURRENT_DATE)-INTERVAL '5 months')::date)`,[x[0],x[5],actor]);
     await require('./datos-flujo-incidencias-demo.cjs')(c);
+    await require('./regularizar-flujos-demo.cjs').regularizar(c);
     await c.query('COMMIT');console.log('Muestra de seis meses y revisión de reportes completada.');
   }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
   console.log(JSON.stringify(await require('../src/services/warehouse.service').sincronizar({origen:'muestra_bi'})));

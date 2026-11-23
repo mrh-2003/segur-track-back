@@ -8,7 +8,7 @@ const listar = async (req, res, next) => {
   try {
     const { limite, offset, pagina } = paginacion(req.query);
     const { filas, total } = await personalService.listar({
-      limite, offset,
+      limite, offset, usuario:req.usuario,
       q:      req.query.q || null,
       estado: req.query.estado || null,
     });
@@ -24,7 +24,7 @@ const resumen = async (req, res, next) => {
 
 const obtener = async (req, res, next) => {
   try {
-    respuestaExito(res, await personalService.obtenerPorId(parseInt(req.params.id, 10)));
+    respuestaExito(res, await personalService.obtenerPorId(parseInt(req.params.id, 10), req.usuario));
   } catch (err) { next(err); }
 };
 

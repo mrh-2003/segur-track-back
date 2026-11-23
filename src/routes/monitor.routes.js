@@ -4,6 +4,7 @@ const { Router } = require('express');
 const ctrl = require('../controllers/monitor.controller');
 
 const router = Router();
+router.use(require('../middlewares/auth').autorizar('administrador','jefe_operaciones','supervisor'));
 
 router.get('/', ctrl.listar);
 router.get('/indicadores', ctrl.indicadoresOperativos);

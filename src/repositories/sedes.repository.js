@@ -21,7 +21,9 @@ const listar = async ({ limite = 50, offset = 0, q } = {}) => {
   );
 
   const { rows } = await pool.query(
-    `SELECT s.id, s.nombre, s.direccion, s.creado_en,
+    `SELECT s.id, s.nombre, s.direccion, s.creado_en, s.cliente_id, s.supervisor_id,
+            (SELECT nombre FROM clientes WHERE id=s.cliente_id) cliente,
+            (SELECT nombres||' '||apellidos FROM personal WHERE id=s.supervisor_id) supervisor,
             (SELECT COUNT(*) FROM personal p WHERE p.sede_id = s.id AND p.eliminado = FALSE) AS personal_total,
             (SELECT COUNT(*) FROM servicios srv WHERE srv.sede_id = s.id AND srv.eliminado = FALSE) AS servicios_total
      FROM sedes s
@@ -60,21 +62,21 @@ const obtenerPorId = async (id) => {
   return rows[0] || null;
 };
 
-const crear = async ({ nombre, direccion }) => {
+const crear = async ({ nombre, direccion, clienteId, supervisorId }) => {
   const { rows } = await pool.query(
-    `INSERT INTO sedes (nombre, direccion)
-     VALUES ($1, $2) RETURNING *`,
-    [nombre.trim(), direccion ? direccion.trim() : null]
+    `INSERT INTO sedes (nombre, direccion, cliente_id, supervisor_id)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [nombre.trim(), direccion ? direccion.trim() : null, clienteId, supervisorId]
   );
   return rows[0];
 };
 
-const actualizar = async (id, { nombre, direccion }) => {
+const actualizar = async (id, { nombre, direccion, clienteId, supervisorId }) => {
   const { rows } = await pool.query(
     `UPDATE sedes
-     SET nombre = $1, direccion = $2, actualizado_en = NOW()
+     SET nombre = $1, direccion = $2, cliente_id=$4, supervisor_id=$5, actualizado_en = NOW()
      WHERE id = $3 AND eliminado = FALSE RETURNING *`,
-    [nombre.trim(), direccion ? direccion.trim() : null, id]
+    [nombre.trim(), direccion ? direccion.trim() : null, id, clienteId, supervisorId]
   );
   return rows[0] || null;
 };

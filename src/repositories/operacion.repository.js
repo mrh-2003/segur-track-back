@@ -68,7 +68,9 @@ const catalogos = async (usuario) => {
     ),
   ]);
   const ids=await require('../services/acceso-servicios').serviciosPermitidos(usuario);
-  return { personal: p.rows, sedes: s.rows, servicios: ids===null?c.rows:c.rows.filter(s=>ids.includes(s.id)) };
+  const personal=ids===null?p.rows:(await pool.query(`SELECT p.id,p.nombres,p.apellidos,p.documento,p.cargo,p.estado,p.sede_id,p.horario_inicio,p.horario_fin,p.dias_laborales FROM personal p WHERE NOT p.eliminado AND $1::int IS NOT NULL AND ${require('../services/acceso-servicios').alcancePersonal(usuario)} ORDER BY p.apellidos`,[usuario.id])).rows;
+  const servicios=ids===null?c.rows:c.rows.filter(s=>ids.includes(s.id));
+  return {personal,sedes:ids===null?s.rows:s.rows.filter(se=>servicios.some(s=>s.sede_id===se.id)),servicios};
 };
 module.exports = { fuentes, catalogos };
 

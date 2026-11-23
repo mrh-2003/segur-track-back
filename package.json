@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "test": "node --test test/evaluacion.test.js test/horario.test.js",
+    "test": "node --test test/evaluacion.test.js test/horario.test.js test/prerrequisitos.test.js",
     "test:integration": "node test/integracion.cjs",
     "db:migrate": "node database/migrar.cjs",
     "db:demo": "node database/seed-demo.cjs",
@@ -17,7 +17,11 @@
     "test:bi:integration": "node test/warehouse-integracion.cjs",
     "db:demo:bi": "node database/completar-demo-bi.cjs",
     "test:incidencias:integration": "node test/incidencias-flujo-integracion.cjs",
-    "db:demo:operativa": "node database/actualizar-demo-operativa.cjs"
+    "db:demo:operativa": "node database/actualizar-demo-operativa.cjs",
+    "test:roles:integration": "node test/roles-operativos-integracion.cjs",
+    "db:demo:verificar": "node database/verificar-flujos-demo.cjs --auditar",
+    "db:demo:ensayar": "node database/verificar-flujos-demo.cjs",
+    "db:demo:regularizar": "node database/verificar-flujos-demo.cjs --aplicar"
   },
   "keywords": [],
   "author": "",

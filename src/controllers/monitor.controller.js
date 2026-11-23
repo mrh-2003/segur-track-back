@@ -6,7 +6,7 @@ const { respuestaExito } = require('../utils/respuesta');
 const listar = async (req, res, next) => {
   try {
     const { estado, sedeId, clienteId } = req.query;
-    const datos = await monitorService.listarMonitor({ estado, sedeId, clienteId });
+    const datos = await monitorService.listarMonitor({ estado, sedeId, clienteId }, req.usuario);
     respuestaExito(res, datos);
   } catch (err) {
     next(err);
@@ -15,7 +15,7 @@ const listar = async (req, res, next) => {
 
 const detalleOperativo = async (req, res, next) => {
   try {
-    const detalle = await monitorService.detalleOperativo(parseInt(req.params.id, 10));
+    const detalle = await monitorService.detalleOperativo(parseInt(req.params.id, 10), req.usuario);
     respuestaExito(res, detalle);
   } catch (err) {
     next(err);
@@ -25,7 +25,7 @@ const detalleOperativo = async (req, res, next) => {
 const indicadoresOperativos = async (req, res, next) => {
   try {
     const { periodo, servicioId, sedeId, clienteId } = req.query;
-    const datos = await monitorService.indicadoresOperativos({ periodo, servicioId, sedeId, clienteId });
+    const datos = await monitorService.indicadoresOperativos({ periodo, servicioId, sedeId, clienteId }, req.usuario);
     respuestaExito(res, datos);
   } catch (err) {
     next(err);
@@ -35,7 +35,7 @@ const indicadoresOperativos = async (req, res, next) => {
 const historialIndicadores = async (req, res, next) => {
   try {
     const { periodos, servicioId, sedeId, clienteId } = req.query;
-    const datos = await monitorService.historialIndicadores({ periodos, servicioId, sedeId, clienteId });
+    const datos = await monitorService.historialIndicadores({ periodos, servicioId, sedeId, clienteId }, req.usuario);
     respuestaExito(res, datos);
   } catch (err) {
     next(err);
@@ -45,7 +45,7 @@ const historialIndicadores = async (req, res, next) => {
 const indicadoresPorServicio = async (req, res, next) => {
   try {
     const { periodo, periodos, servicioId, clienteId, sedeId } = req.query;
-    const datos = await monitorService.indicadoresPorServicio({ periodo, periodos, servicioId, clienteId, sedeId });
+    const datos = await monitorService.indicadoresPorServicio({ periodo, periodos, servicioId, clienteId, sedeId }, req.usuario);
     respuestaExito(res, datos);
   } catch (err) {
     next(err);

@@ -4,6 +4,7 @@ const { Router } = require('express');
 const ctrl = require('../controllers/inicio.controller');
 
 const router = Router();
+router.use(require('../middlewares/auth').autorizar('administrador','jefe_operaciones'));
 
 router.get('/resumen',             ctrl.resumen);
 router.get('/actividad-operativa', ctrl.actividadOperativa);

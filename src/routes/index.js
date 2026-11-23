@@ -24,6 +24,7 @@ const router = Router();
 router.use('/auth', authRutas);
 router.use('/operaciones', autenticar, require('./operacion.routes'));
 router.use('/importaciones', autenticar, require('./importaciones.routes'));
+router.use('/notificaciones', autenticar, require('./notificaciones.routes'));
 router.use('/inicio', autenticar, inicioRutas);
 router.use('/personal', autenticar, personalRutas);
 router.use('/turnos', autenticar, turnosRutas);

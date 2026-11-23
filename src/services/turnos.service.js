@@ -14,9 +14,9 @@ const {
 
 const listarPorSemana = async (filtros) => turnosRepo.listarPorSemana(filtros);
 
-const obtenerResumen = async () => turnosRepo.obtenerResumen();
+const obtenerResumen = async (u) => turnosRepo.obtenerResumen(u);
 
-const obtenerAlertas = async () => turnosRepo.obtenerAlertas();
+const obtenerAlertas = async (u) => turnosRepo.obtenerAlertas(u);
 
 const crear = async (datos, usuario) => {
   if (usuario.rol === 'operador') {
@@ -243,7 +243,7 @@ const eliminar = async (id, usuarioSolicitante) => {
   return t;
 };
 
-const listarSedes = async () => turnosRepo.listarSedes();
+const listarSedes = async (u) => turnosRepo.listarSedes(u);
 
 module.exports = {
   listarPorSemana,

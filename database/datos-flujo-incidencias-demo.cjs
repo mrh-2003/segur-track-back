@@ -6,7 +6,7 @@ module.exports=async(c,{idsExplicitos=false}={})=>{
  FROM servicios s JOIN servicio_personal sp ON sp.servicio_id=s.id AND NOT sp.eliminado
  JOIN personal p ON p.id=sp.personal_id JOIN usuarios u ON u.id=p.usuario_id AND u.rol='operador' AND u.activo AND NOT u.eliminado
  JOIN personal ps ON ps.id=s.supervisor_id JOIN usuarios us ON us.id=ps.usuario_id AND us.rol='supervisor' AND us.activo AND NOT us.eliminado
- WHERE NOT s.eliminado AND NOT p.eliminado AND p.cargo='agente' AND p.estado='activo' ORDER BY s.id,p.id LIMIT 1`)).rows[0];
+ WHERE s.codigo_externo LIKE 'DEMO-SRV-%' AND NOT s.eliminado AND NOT p.eliminado AND p.cargo='agente' AND p.estado='activo' ORDER BY s.id,p.id LIMIT 1`)).rows[0];
  if(!base)return; // La instalación mínima puede no tener todavía agentes con cuenta y servicio asignado.
  const tipo=(await c.query('SELECT id FROM tipos_incidencia WHERE NOT eliminado ORDER BY id LIMIT 1')).rows[0]?.id;if(!tipo)return;
  for(const [n,estado] of [[1,'pendiente'],[2,'rechazada'],[3,'aprobada']]){

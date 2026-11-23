@@ -12,7 +12,7 @@ const handler = (fn) => async (req, res, next) => {
 exports.catalogos = handler(r => repo.catalogos(r.usuario));
 exports.opcionesTurno = handler((r) => svc.opcionesTurno(r.query, r.usuario));
 exports.disponibles = handler((r) =>
-  svc.personalDisponible(r.query.inicio, r.query.fin)
+  svc.personalDisponible(r.query.inicio, r.query.fin, r.usuario)
 );
 exports.historial = handler((r) =>
   svc.historial(Number(r.params.id), r.usuario)

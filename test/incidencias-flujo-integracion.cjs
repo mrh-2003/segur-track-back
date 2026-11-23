@@ -17,6 +17,7 @@ const flujo=require('../src/services/incidencias-flujo.service'),op=require('../
     JOIN personal ps ON ps.id=s.supervisor_id JOIN usuarios us ON us.id=ps.usuario_id AND us.rol='supervisor' AND NOT us.eliminado
     WHERE NOT s.eliminado AND NOT p.eliminado AND p.cargo='agente' AND p.estado='activo' ORDER BY s.id LIMIT 1`)).rows[0];assert.ok(base);
   const admin=(await c.query("SELECT id,rol FROM usuarios WHERE rol='administrador' AND NOT eliminado LIMIT 1")).rows[0];
+  const jefe=(await c.query("SELECT id,rol FROM usuarios WHERE rol='jefe_operaciones' AND NOT eliminado LIMIT 1")).rows[0];assert.ok(jefe);
   const operador={id:base.operador,rol:'operador',personalId:base.personal_id},sup={id:base.supervisor,rol:'supervisor'},ajeno={id:999998,rol:'operador'};
   const tipo=(await c.query('SELECT id FROM tipos_incidencia WHERE NOT eliminado LIMIT 1')).rows[0].id;
   const sinCuenta=(await c.query(`INSERT INTO personal(nombres,apellidos,documento,cargo,sede_id)
@@ -24,7 +25,7 @@ const flujo=require('../src/services/incidencias-flujo.service'),op=require('../
   await c.query('INSERT INTO servicio_personal(servicio_id,personal_id) VALUES($1,$2)',[base.servicio_id,sinCuenta.id]);
   const opciones=await op.responsables(base.servicio_id,sup);
   assert.equal(opciones.find(p=>p.id===sinCuenta.id)?.puede_operar,false,'El selector debe mostrar también agentes asignados que todavía no tienen cuenta');
-  const i=await op.guardar(null,{tipoIncidenciaId:tipo,servicioId:base.servicio_id,descripcion:'PRUEBA: corrección operativa con ampliación',prioridad:'alta'},operador);
+  const i=await op.guardar(null,{responsableId:base.personal_id,tipoIncidenciaId:tipo,servicioId:base.servicio_id,descripcion:'PRUEBA: corrección operativa con ampliación',prioridad:'alta'},admin);
   await c.query("UPDATE incidencias SET fecha_registro=NOW()-INTERVAL '5 hours',sla_resolucion_min=60 WHERE id=$1",[i.id]);
   const original=(await flujo.detalle(i.id,operador)).plazo_resolucion;assert.equal((await flujo.detalle(i.id,operador)).vencida,true);
   await assert.rejects(()=>flujo.detalle(i.id,ajeno),e=>e.codigo===403);
@@ -35,21 +36,21 @@ const flujo=require('../src/services/incidencias-flujo.service'),op=require('../
   await assert.rejects(()=>flujo.actuar(i.id,{accion:'atender'},operador),/ya fue/);
   await flujo.actuar(i.id,{accion:'avance',comentario:'Se aisló el área y se solicitó apoyo técnico'},operador);
   const futuro=new Date(Date.now()+2*3600000).toISOString();
-  await assert.rejects(()=>flujo.solicitar(i.id,{motivo:'Se requiere apoyo técnico',plazoSolicitado:original},operador),/posterior/);
-  const s=await flujo.solicitar(i.id,{motivo:'El técnico requiere más tiempo para concluir la corrección',plazoSolicitado:futuro},operador);
+  await assert.rejects(()=>flujo.solicitar(i.id,{motivo:'Se requiere apoyo técnico',plazoSolicitado:original},sup),/posterior/);
+  const s=await flujo.solicitar(i.id,{motivo:'El técnico requiere más tiempo para concluir la corrección',plazoSolicitado:futuro},sup);
   let d=await flujo.detalle(i.id,operador);assert.equal(+new Date(d.plazo_resolucion),+new Date(original));assert.equal(d.vencida,true);assert.equal(d.ampliaciones[0].estado,'pendiente');
-  await assert.rejects(()=>flujo.solicitar(i.id,{motivo:'Otra petición de tiempo adicional',plazoSolicitado:futuro},operador),/pendiente/);
+  await assert.rejects(()=>flujo.solicitar(i.id,{motivo:'Otra petición de tiempo adicional',plazoSolicitado:futuro},sup),/pendiente/);
   await assert.rejects(()=>flujo.decidir(i.id,s.id,{decision:'aprobada',comentario:'Se autoriza'},operador),e=>e.codigo===403);
   await assert.rejects(()=>flujo.decidir(i.id,s.id,{decision:'aprobada',comentario:'Se autoriza'},{id:999997,rol:'supervisor'}),e=>e.codigo===403);
-  assert.equal((await flujo.detalle(i.id,sup)).permisos.revisar,true);
-  await flujo.decidir(i.id,s.id,{decision:'aprobada',comentario:'Se autoriza el apoyo técnico y el nuevo plazo'},sup);
+  assert.equal((await flujo.detalle(i.id,sup)).permisos.revisar,false);assert.equal((await flujo.detalle(i.id,jefe)).permisos.revisar,true);
+  await flujo.decidir(i.id,s.id,{decision:'aprobada',comentario:'Se autoriza el apoyo técnico y el nuevo plazo'},jefe);
   d=await flujo.detalle(i.id,operador);assert.equal(d.vencida,false);assert.equal(+new Date(d.plazo_resolucion),+new Date(futuro));assert.equal(d.sla_resolucion_min,60);
-  await assert.rejects(()=>flujo.decidir(i.id,s.id,{decision:'rechazada',comentario:'Segunda decisión'},sup),/ya no/);
-  const siguiente=await flujo.solicitar(i.id,{motivo:'Se requiere otra ampliación adicional del trabajo',plazoSolicitado:new Date(Date.now()+4*3600000).toISOString()},operador);
-  await flujo.decidir(i.id,siguiente.id,{decision:'rechazada',comentario:'El apoyo disponible permite concluir dentro del plazo vigente'},sup);
+  await assert.rejects(()=>flujo.decidir(i.id,s.id,{decision:'rechazada',comentario:'Segunda decisión'},jefe),/ya no/);
+  const siguiente=await flujo.solicitar(i.id,{motivo:'Se requiere otra ampliación adicional del trabajo',plazoSolicitado:new Date(Date.now()+4*3600000).toISOString()},sup);
+  await flujo.decidir(i.id,siguiente.id,{decision:'rechazada',comentario:'El apoyo disponible permite concluir dentro del plazo vigente'},jefe);
   assert.equal(+new Date((await flujo.detalle(i.id,operador)).plazo_resolucion),+new Date(futuro));
   const propia=await op.guardar(null,{tipoIncidenciaId:tipo,servicioId:base.servicio_id,responsableId:base.personal_id,descripcion:'PRUEBA: impedir aprobación propia de ampliación',prioridad:'alta'},admin);
-  const aut=await flujo.solicitar(propia.id,{motivo:'Solicitud creada por el administrador para probar separación',plazoSolicitado:new Date(Date.now()+10*3600000).toISOString()},admin);
+  const aut=await flujo.solicitar(propia.id,{motivo:'Solicitud creada por el administrador para probar separación',plazoSolicitado:new Date(Date.now()+10*3600000).toISOString()},sup);
   await assert.rejects(()=>flujo.decidir(propia.id,aut.id,{decision:'aprobada',comentario:'Intento propio'},admin),e=>e.codigo===403);
   server=require('../src/app').listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
   const jwt=require('jsonwebtoken'),secret=require('../src/config/env').JWT_SECRET,url='http://127.0.0.1:'+server.address().port+'/api/v1';
@@ -77,7 +78,7 @@ const flujo=require('../src/services/incidencias-flujo.service'),op=require('../
   assert.ok(a.incidencias_resumen.resueltas>0,'El escenario debe incluir resoluciones atribuibles al operador');
   const ga=await api(`/multicriterio/servicios/${base.servicio_id}/agentes/${base.personal_id}?periodo=todos`,sup);assert.equal(ga.status,200);assert.equal(ga.data.datos.agente.id,base.personal_id);
   assert.equal((await api(`/multicriterio/servicios/${base.servicio_id}/agentes/999998`,sup)).status,404);
-  await flujo.solicitar(i.id,{motivo:'Solicitud pendiente que se cancelará al resolver',plazoSolicitado:new Date(Date.now()+6*3600000).toISOString()},operador);
+  await flujo.solicitar(i.id,{motivo:'Solicitud pendiente que se cancelará al resolver',plazoSolicitado:new Date(Date.now()+6*3600000).toISOString()},sup);
   const cerrado=await flujo.actuar(i.id,{accion:'resolver',comentario:'La corrección fue completada y documentada con fotografía de prueba',evidencias:['https://example.test/correccion.png']},operador);
   assert.equal(cerrado.estado,'cerrada');d=await flujo.detalle(i.id,operador);assert.equal(d.vencida,false);assert.equal(d.ampliaciones.at(-1).estado,'cancelada');assert.ok(d.seguimiento.some(e=>e.accion==='resolver'&&e.evidencias.length===1));
   await assert.rejects(()=>flujo.actuar(i.id,{accion:'avance',comentario:'Intento de reapertura'},operador),/ya está resuelta/);

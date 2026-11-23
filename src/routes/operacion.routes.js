@@ -9,8 +9,8 @@ const r = Router(),
 r.param('id', require('../middlewares/identificador'));
 const fecha = z.string().datetime({ offset: true });
 r.get('/servicios/:id/turnos', ctrl.turnosServicio);
-r.get('/responsables', ctrl.responsables);
-r.get('/catalogos', gestor, ctrl.catalogos);
+r.get('/responsables', autorizar('administrador','jefe_operaciones'), ctrl.responsables);
+r.get('/catalogos', ctrl.catalogos);
 r.get('/disponibles', gestor, ctrl.disponibles);
 r.get('/opciones-turno', gestor, ctrl.opcionesTurno);
 r.get('/turnos/:id/historial', ctrl.historial);
@@ -18,7 +18,7 @@ r.patch(
   '/turnos/:id/asistencia',
   validar(
     z.union([
-      z.object({ accion: z.enum(['ingreso', 'salida']) }),
+      z.object({ accion: z.enum(['ingreso', 'salida']), ubicacion: z.object({latitud:z.number().min(-90).max(90),longitud:z.number().min(-180).max(180),precision:z.number().min(0)}) }),
       z.object({
         ingresoReal: fecha.nullable(),
         salidaReal: fecha.nullable(),
@@ -35,10 +35,10 @@ r.patch(
   ),
   ctrl.asistencia
 );
-r.get('/ausencias', gestor, ctrl.ausencias);
+r.get('/ausencias', autorizar('administrador','jefe_operaciones'), ctrl.ausencias);
 r.post(
   '/ausencias',
-  gestor,
+  autorizar('administrador','jefe_operaciones'),
   validar(
     z
       .object({
@@ -53,5 +53,5 @@ r.post(
   ),
   ctrl.crearAusencia
 );
-r.delete('/ausencias/:id', gestor, ctrl.eliminarAusencia);
+r.delete('/ausencias/:id', autorizar('administrador','jefe_operaciones'), ctrl.eliminarAusencia);
 module.exports = r;

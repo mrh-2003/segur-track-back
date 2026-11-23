@@ -34,11 +34,11 @@ const actualizarPesos = async (criterios) => {
     c.release();
   }
 };
-const obtenerResultado = (q) => svc.resultado(q);
-const obtenerIndicadores = (q) => svc.resultado(q);
+const obtenerResultado = (q,u) => svc.resultado(q,u);
+const obtenerIndicadores = (q,u) => svc.resultado(q,u);
 const obtenerDetallePorServicio = async (id, q, u, personalId=null) => {
   await require('./acceso-servicios').comprobar(id,u);
-  const data=await require('../repositories/operacion.repository').fuentes();
+  const data=await require('./acceso-servicios').filtrarFuentes(await require('../repositories/operacion.repository').fuentes(),u);
   const {evaluarFuentes,filtros,franja}=require('./evaluacion-operativa');
   const f=filtros(q,data.corte);
   const enPeriodo=fecha=>+new Date(fecha)>=+(f.inicio?new Date(f.inicio):-Infinity)&&+new Date(fecha)<=+new Date(f.fin);
@@ -48,6 +48,7 @@ const obtenerDetallePorServicio = async (id, q, u, personalId=null) => {
     FROM personal p WHERE p.cargo='agente' AND NOT p.eliminado AND (
     EXISTS(SELECT 1 FROM servicio_personal sp WHERE sp.personal_id=p.id AND sp.servicio_id=$1 AND NOT sp.eliminado)
     OR p.id=ANY($2::int[]) OR p.id=ANY($3::int[])) ORDER BY p.apellidos,p.nombres`,[id,turnos.map(t=>t.personal_id).filter(Boolean),data.incidencias.filter(i=>i.servicio_id===id&&enPeriodo(i.fecha_registro)).map(i=>i.responsable_id).filter(Boolean)])).rows;
+  if(u.rol==='operador'){const propios=(await pool.query('SELECT id FROM personal WHERE usuario_id=$1 AND NOT eliminado',[u.id])).rows.map(p=>p.id);for(let i=personal.length-1;i>=0;i--)if(!propios.includes(personal[i].id))personal.splice(i,1);}
   const agente=personalId?personal.find(p=>p.id===personalId):null;
   if(personalId&&!agente)throw new ErrorNoEncontrado('Agente no asignado a este servicio ni vinculado a su operación en el periodo');
   // Las obligaciones se filtran por los turnos del agente; las incidencias por su responsable.

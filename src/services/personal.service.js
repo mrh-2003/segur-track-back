@@ -8,7 +8,8 @@ const listar = async (filtros) => personalRepo.listar(filtros);
 
 const obtenerResumen = async () => personalRepo.obtenerResumen();
 
-const obtenerPorId = async (id) => {
+const obtenerPorId = async (id, usuario) => {
+  if(usuario) await require('./acceso-servicios').comprobarPersonal(id,usuario);
   const p = await personalRepo.obtenerPorId(id);
   if (!p) throw new ErrorNoEncontrado('Personal no encontrado');
   return p;

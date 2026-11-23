@@ -26,7 +26,7 @@ const esquemaCrear = z.object({
   nombre: z.string().min(3, 'Nombre requerido'),
   clienteId: z.number().int().positive('Cliente requerido'),
   sedeId: z.number().int().positive('Sede requerida'),
-  supervisorId: z.number().int().positive('Supervisor requerido'),
+  supervisorId: z.number().int().positive('Supervisor requerido').optional(),
   horaInicio: horaValidador,
   horaFin: horaValidador,
   estado: z.enum(['programado', 'en_curso', 'finalizado']).optional().default('programado'),

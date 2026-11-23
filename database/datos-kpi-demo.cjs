@@ -4,7 +4,7 @@ module.exports=async(c,opciones={})=>{
   if(!(await c.query('SELECT datos_demo FROM configuracion_operativa WHERE id=1')).rows[0]?.datos_demo) throw new Error('Se requiere una base de demostración');
     const u=(await c.query("SELECT id FROM usuarios WHERE rol='administrador' AND NOT eliminado ORDER BY id LIMIT 1")).rows[0];
     await c.query("SELECT set_config('app.usuario_id',$1,true),set_config('app.motivo','Datos de prueba KPI: programación y ejecución sintéticas',true)",[String(u.id)]);
-    const servicios=(await c.query('SELECT id FROM servicios WHERE NOT eliminado ORDER BY id')).rows;
+    const servicios=(await c.query("SELECT id FROM servicios WHERE NOT eliminado AND codigo_externo LIKE 'DEMO-SRV-%' ORDER BY id")).rows;
     for(const s of servicios) {
       const existe=(await c.query('SELECT 1 FROM planes_operativos WHERE servicio_id=$1',[s.id])).rowCount;
       if(!existe) {
@@ -18,7 +18,7 @@ module.exports=async(c,opciones={})=>{
         SELECT $1,'DEMO · Verificar accesos autorizados y comunicar novedades'
         WHERE NOT EXISTS(SELECT 1 FROM consignas WHERE servicio_id=$1 AND descripcion='DEMO · Verificar accesos autorizados y comunicar novedades')`,[s.id]);
     }
-    await c.query('SELECT programar_plan_turno(id) FROM turnos WHERE NOT eliminado ORDER BY id');
+    await c.query("SELECT programar_plan_turno(t.id) FROM turnos t JOIN servicios s ON s.id=t.servicio_id WHERE NOT t.eliminado AND s.codigo_externo LIKE 'DEMO-SRV-%' ORDER BY t.id");
     await c.query(`UPDATE obligaciones_operativas o SET origen='demo_kpis_20261118'
       FROM plantillas_operativas p WHERE p.id=o.plantilla_id AND p.descripcion LIKE 'DEMO · %' AND NOT o.eliminado AND o.origen='plan_servicio'`);
     await c.query(`UPDATE rondas r SET origen='demo_kpis_20261118'
@@ -49,13 +49,14 @@ module.exports=async(c,opciones={})=>{
       GREATEST(t.ingreso_real,t.inicio_programado+INTERVAL '30 minutes')
       FROM vw_operacion_turnos t JOIN consignas cn ON cn.servicio_id=t.servicio_id
       WHERE cn.descripcion='DEMO · Verificar accesos autorizados y comunicar novedades' AND NOT cn.eliminado
+      AND EXISTS(SELECT 1 FROM servicios s WHERE s.id=t.servicio_id AND s.codigo_externo LIKE 'DEMO-SRV-%')
       AND t.ingreso_real IS NOT NULL AND GREATEST(t.ingreso_real,t.inicio_programado+INTERVAL '30 minutes')<=NOW()
       AND NOT EXISTS(SELECT 1 FROM verificaciones_consignas v WHERE v.turno_id=t.id AND v.consigna_id=cn.id)`,[u.id]);
     await c.query(`UPDATE incidencias i SET sla_resolucion_min=CASE i.prioridad WHEN 'alta' THEN c.resolucion_alta WHEN 'media' THEN c.resolucion_media ELSE c.resolucion_baja END,
-      origen_plazo='demo_kpis_20261118' FROM configuracion_operativa c WHERE c.id=1 AND i.sla_resolucion_min IS NULL`);
+      origen_plazo='demo_kpis_20261118' FROM configuracion_operativa c WHERE c.id=1 AND i.sla_resolucion_min IS NULL AND EXISTS(SELECT 1 FROM servicios s WHERE s.id=i.servicio_id AND s.codigo_externo LIKE 'DEMO-SRV-%')`);
     // Solo el escenario demo: validar sus casos vencidos pendientes para probar la evaluación completa.
     await c.query(`UPDATE turnos t SET asistencia_validada=TRUE FROM vw_operacion_turnos v
-      WHERE v.id=t.id AND v.fin_programado<=NOW() AND NOT t.asistencia_validada`);
+      WHERE v.id=t.id AND EXISTS(SELECT 1 FROM servicios s WHERE s.id=t.servicio_id AND s.codigo_externo LIKE 'DEMO-SRV-%') AND v.fin_programado<=NOW() AND NOT t.asistencia_validada`);
     await require('../src/services/warehouse.service').inicializarCatalogo(c);
     await c.query(`UPDATE obligaciones_operativas SET primera_entrega_en=COALESCE(primera_entrega_en,fecha_completada)
       WHERE tipo='reporte' AND origen='demo_kpis_20261118' AND fecha_completada IS NOT NULL`);
@@ -69,6 +70,7 @@ module.exports=async(c,opciones={})=>{
       AND o.origen='demo_kpis_20261118' AND o.estado_revision='pendiente'`);
     await require('./preparar-operadores-demo.cjs')(c,opciones);
     await require('./datos-flujo-incidencias-demo.cjs')(c,opciones);
+    await require('./regularizar-flujos-demo.cjs').regularizar(c);
     await c.query('SELECT bi.refrescar()');
 
 };

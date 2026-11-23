@@ -28,6 +28,8 @@ async function guardar(id,d,u){
   const propia=(await c.query('SELECT id FROM personal WHERE usuario_id=$1 AND NOT eliminado',[u.id])).rows[0];
   let responsableId=d.responsableId||actual?.responsable_id||propia?.id;
   if(u.rol==='operador'){
+   if(!(await c.query(`SELECT 1 FROM vw_operacion_turnos t JOIN personal p ON p.id=t.personal_id JOIN servicios s ON s.id=t.servicio_id WHERE t.servicio_id=$1 AND p.usuario_id=$2 AND s.estado='en_curso' AND t.inicio_programado<=NOW() AND t.fin_programado>NOW() AND t.estado IN ('confirmado','pendiente') AND t.salida_real IS NULL`,[servicioId,u.id])).rowCount)throw new ErrorAutorizacion('Solo puede reportar incidencias de su servicio activo durante su turno');
+   if(!(await c.query(`SELECT 1 FROM vw_operacion_turnos t JOIN personal p ON p.id=t.personal_id WHERE t.servicio_id=$1 AND p.usuario_id=$2 AND t.inicio_programado<=NOW() AND t.fin_programado>NOW() AND t.estado IN ('confirmado','pendiente') AND t.salida_real IS NULL`,[servicioId,u.id])).rowCount)throw new ErrorAutorizacion('Solo puede reportar incidencias de su servicio activo durante su turno');
    if(!propia||responsableId!==propia.id||!(await c.query('SELECT 1 FROM servicio_personal WHERE servicio_id=$1 AND personal_id=$2 AND NOT eliminado',[servicioId,propia.id])).rowCount)throw new ErrorAutorizacion('Solo puede reportar para sus servicios y asumir su propia atención');
    if(d.slaMin!==undefined||d.slaResolucionMin!==undefined)throw new ErrorAutorizacion('Los plazos iniciales los define supervisión');
   }

@@ -15,7 +15,7 @@ const listar = async (req, res, next) => {
 const obtener = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const item = await evidenciasService.obtenerPorId(id);
+    const item = await evidenciasService.obtenerPorId(id,req.usuario);
     respuestaExito(res, item);
   } catch (err) {
     next(err);

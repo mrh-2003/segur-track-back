@@ -8,7 +8,7 @@ const { esquemaCrear, esquemaActualizar, esquemaCambiarEstado } = require('../va
 
 const router = Router();
 
-router.get('/',                        ctrl.listar);
+router.get('/', autorizar('administrador','jefe_operaciones','supervisor'), ctrl.listar);
 router.get('/resumen',                 autorizar('administrador', 'jefe_operaciones'), ctrl.resumen);
 router.get('/:id',                     autorizar('administrador', 'jefe_operaciones', 'supervisor'), ctrl.obtener);
 router.post('/',                       autorizar('administrador', 'jefe_operaciones'), validar(esquemaCrear), ctrl.crear);

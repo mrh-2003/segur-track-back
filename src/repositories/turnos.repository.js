@@ -2,7 +2,7 @@
 
 const pool = require('../config/db');
 
-const listarPorSemana = async ({ desde, hasta, sedeId }) => {
+const listarPorSemana = async ({ desde, hasta, sedeId, usuario, estado }) => {
   const condiciones = ['t.eliminado = FALSE', 't.fecha BETWEEN $1 AND $2'];
   const valores = [desde, hasta];
   let idx = 3;
@@ -13,6 +13,10 @@ const listarPorSemana = async ({ desde, hasta, sedeId }) => {
     idx++;
   }
 
+  const ids=await require('../services/acceso-servicios').serviciosPermitidos(usuario);
+  if(ids!==null && usuario?.rol!=='operador'){condiciones.push(`t.servicio_id=ANY($${idx}::int[])`);valores.push(ids);idx++;}
+  if(usuario?.rol==='operador'){condiciones.push(`p.usuario_id=$${idx}`);valores.push(usuario.id);idx++;}
+  if(estado){condiciones.push(`t.estado=$${idx}`);valores.push(estado);idx++;}
   const { rows } = await pool.query(
     `SELECT t.*, TO_CHAR(t.fecha, 'YYYY-MM-DD') AS fecha,
             t.hora_inicio, t.hora_fin, t.estado, t.relevo_pendiente,
@@ -36,33 +40,17 @@ const listarPorSemana = async ({ desde, hasta, sedeId }) => {
   return rows;
 };
 
-const obtenerResumen = async () => {
-  const { rows } = await pool.query(`
-    SELECT
-      COUNT(*) FILTER (WHERE estado = 'programado') AS programados,
-      COUNT(*) FILTER (WHERE estado = 'cumplido')   AS cumplidos,
-      COUNT(*) FILTER (WHERE estado IN ('pendiente','sin_confirmar') OR relevo_pendiente = TRUE) AS pendientes,
-      COUNT(*) AS total,
-      ROUND(
-        COUNT(*) FILTER (WHERE estado = 'cumplido')::NUMERIC /
-        NULLIF(COUNT(*) FILTER (WHERE estado IN ('cumplido','pendiente','programado','confirmado','sin_confirmar')), 0) * 100, 1
-      ) AS cobertura
-    FROM turnos WHERE eliminado = FALSE
-      AND fecha BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE
-  `);
-  return rows[0];
+const obtenerResumen = async (u) => {
+  const fecha=require('../services/evaluacion-operativa').fechaLocal;
+  const ts=await listarPorSemana({desde:fecha(new Date(Date.now()-7*86400000)),hasta:fecha(new Date()),usuario:u});
+  const cumplidos=ts.filter(t=>t.estado==='cumplido').length;
+  return {total:ts.length,programados:ts.filter(t=>t.estado==='programado').length,cumplidos,pendientes:ts.filter(t=>['pendiente','sin_confirmar'].includes(t.estado)||t.relevo_pendiente).length,cobertura:ts.length?Math.round(cumplidos/ts.length*1000)/10:null};
 };
 
-const obtenerAlertas = async () => {
-  const { rows } = await pool.query(`
-    SELECT
-      COUNT(*) FILTER (WHERE estado = 'sin_confirmar' AND relevo_pendiente = FALSE) AS sin_confirmar,
-      COUNT(*) FILTER (WHERE relevo_pendiente = TRUE)  AS relevo_pendiente,
-      COUNT(*) FILTER (WHERE estado = 'pendiente')     AS pendientes
-    FROM turnos
-    WHERE eliminado = FALSE AND fecha = CURRENT_DATE
-  `);
-  return rows[0];
+const obtenerAlertas = async (u) => {
+  const hoy=require('../services/evaluacion-operativa').fechaLocal(new Date());
+  const ts=await listarPorSemana({desde:hoy,hasta:hoy,usuario:u});
+  return {sin_confirmar:ts.filter(t=>t.estado==='sin_confirmar').length,relevo_pendiente:ts.filter(t=>t.relevo_pendiente).length,pendientes:ts.filter(t=>t.estado==='pendiente').length};
 };
 
 const obtenerPorId = async (id) => {
@@ -192,11 +180,9 @@ const eliminar = async (id, eliminadoPor) => {
   return rows[0] || null;
 };
 
-const listarSedes = async () => {
-  const { rows } = await pool.query(
-    'SELECT id, nombre FROM sedes WHERE eliminado = FALSE ORDER BY nombre'
-  );
-  return rows;
+const listarSedes = async (u) => {
+  const ids=await require('../services/acceso-servicios').serviciosPermitidos(u);
+  return (await pool.query('SELECT DISTINCT se.id,se.nombre FROM sedes se JOIN servicios s ON s.sede_id=se.id WHERE NOT se.eliminado AND NOT s.eliminado AND ($1::int[] IS NULL OR s.id=ANY($1)) ORDER BY se.nombre',[ids])).rows;
 };
 
 module.exports = {

@@ -2,7 +2,7 @@
 
 const pool = require('../config/db');
 
-const listarMonitor = async ({ estado, sedeId, clienteId }) => {
+const listarMonitor = async ({ estado, sedeId, clienteId, permitidos }) => {
   const condiciones = ['s.eliminado = FALSE'];
   const valores = [];
   let idx = 1;
@@ -23,6 +23,7 @@ const listarMonitor = async ({ estado, sedeId, clienteId }) => {
     idx++;
   }
 
+  if(permitidos!==null && permitidos!==undefined){condiciones.push(`s.id=ANY($${idx}::int[])`);valores.push(permitidos);idx++;}
   const where = condiciones.join(' AND ');
 
   const { rows } = await pool.query(
@@ -108,11 +109,12 @@ const obtenerDetalleOperativo = async (id) => {
 };
 
 // Cada fuente se agrega antes de combinarla: evita productos cartesianos.
-const filtrosServicios = ({ servicioId, sedeId, clienteId }, valores) => {
+const filtrosServicios = ({ servicioId, sedeId, clienteId, permitidos }, valores) => {
   const condiciones = ['NOT s.eliminado'];
   for (const [campo, valor] of [['s.id', servicioId], ['s.sede_id', sedeId], ['s.cliente_id', clienteId]]) {
     if (valor) { valores.push(valor); condiciones.push(campo + '=$' + valores.length); }
   }
+  if(permitidos!==null && permitidos!==undefined){valores.push(permitidos);condiciones.push('s.id=ANY($'+valores.length+'::int[])');}
   return condiciones.join(' AND ');
 };
 const dias = (valor, defecto = 30) => {

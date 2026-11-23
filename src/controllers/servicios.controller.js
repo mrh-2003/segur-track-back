@@ -140,7 +140,7 @@ const crearRequerimiento = async (req, res, next) => {
 const eliminarRequerimiento = async (req, res, next) => {
   try {
     const reqId = parseInt(req.params.reqId, 10);
-    const resultado = await serviciosService.eliminarRequerimiento(reqId, req.usuario);
+    const resultado = await serviciosService.eliminarRequerimiento(reqId, req.usuario, Number(req.params.id));
     respuestaExito(res, resultado);
   } catch (err) {
     next(err);
@@ -150,7 +150,7 @@ const eliminarRequerimiento = async (req, res, next) => {
 const detalleOperativo = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const detalle = await serviciosService.obtenerDetalleOperativo(id);
+    const detalle = await serviciosService.obtenerDetalleOperativo(id, req.usuario);
     respuestaExito(res, detalle);
   } catch (err) {
     next(err);

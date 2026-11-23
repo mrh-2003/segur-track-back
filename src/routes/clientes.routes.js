@@ -12,8 +12,8 @@ const router = Router();
 router.get('/', clientesController.listar);
 router.get('/resumen', clientesController.resumen);
 router.get('/:id', clientesController.obtenerPorId);
-router.post('/', autorizar('administrador', 'supervisor'), validar(esquemaCrear), clientesController.crear);
-router.put('/:id', autorizar('administrador', 'supervisor'), validar(esquemaActualizar), clientesController.actualizar);
+router.post('/', autorizar('administrador', 'jefe_operaciones'), validar(esquemaCrear), clientesController.crear);
+router.put('/:id', autorizar('administrador', 'jefe_operaciones'), validar(esquemaActualizar), clientesController.actualizar);
 router.delete('/:id', autorizar('administrador'), clientesController.eliminar);
 
 module.exports = router;
