@@ -37,3 +37,7 @@ Se regularizaron exclusivamente los ejemplos identificados por servicios `DEMO-S
 Los generadores de KPI, muestra BI y actualización operativa ejecutan la regularización antes del commit. La reparación verifica idempotencia y conserva un respaldo comprimido previo en `analisis/respaldo-flujos-demo-*.json.gz`; además comprueba que no cambien los turnos e incidencias no demo. BI se sincronizó después de ambas reparaciones.
 
 Comandos: `npm run db:demo:verificar` (auditoría), `npm run db:demo:ensayar` (rollback), `npm run db:demo:regularizar` (respaldo, reparación y sincronización).
+
+## Inicio del supervisor
+
+Inicio está disponible para administración, jefatura y supervisión. El supervisor ve únicamente el resumen de sus servicios, agentes de sus servicios o sedes, incidencias y actividad relacionada. La actividad usa trazas vinculadas por servicio; no utiliza la bitácora global. Sin asignaciones, devuelve un resumen vacío. Los accesos rápidos respetan el rol: Mi personal es consulta, sin crear personal ni importar datos. El operador conserva su panel personal.

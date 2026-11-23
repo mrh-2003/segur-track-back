@@ -51599,7 +51599,7 @@ COMMIT;
 
 -- CREDENCIALES DE EJEMPLO EN TEXTO CLARO (comentarios, no datos almacenados).
 -- # admin@segurtrack.com | contraseña: DemoSegur2026!
--- # supervisor@segurtrack.com | contraseña: DemoSegur2026!
+-- # cdz | contraseña: DemoSegur2026!
 -- # jefe@segurtrack.com | contraseña: DemoSegur2026!
 -- # operador@segurtrack.com | contraseña: DemoSegur2026!
 -- # inactivo@segurtrack.com | contraseña: DemoSegur2026! | cuenta inactiva
