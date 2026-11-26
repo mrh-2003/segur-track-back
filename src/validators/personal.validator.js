@@ -9,12 +9,15 @@ const esquemaCrear = z.object({
   correo: z.string().email('Correo electrónico válido requerido'),
   cargo: z.enum(['jefe_operaciones', 'supervisor', 'agente', 'administrativo'], { message: 'Cargo inválido' }),
   estado: z.enum(['activo', 'inactivo']).optional().default('activo'),
-  sedeId: z.number().int().positive('Sede requerida'),
+  sedeId: z.number().int().positive().nullable().optional(),
+  sedeIds: z.array(z.number().int().positive()).optional(),
   usuarioId: z.number().int().positive().nullable().optional(),
   horarioInicio: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
   horarioFin: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
   diasLaborales: z.array(z.number().int().min(0).max(6)).min(1).optional(),
-}).refine((d) => Boolean(d.horarioInicio) === Boolean(d.horarioFin), { message: 'Complete ambas horas del horario laboral', path: ['horarioFin'] });
+}).refine(d => d.cargo !== 'supervisor' || (d.sedeIds ?? (d.sedeId ? [d.sedeId] : [])).length > 0, {message: 'Asigne al menos una sede al supervisor', path: ['sedeIds']})
+.refine(d => d.cargo !== 'agente' || (d.sedeIds ?? (d.sedeId ? [d.sedeId] : [])).length === 1, {message: 'El agente debe tener una única sede', path: ['sedeId']})
+.refine((d) => Boolean(d.horarioInicio) === Boolean(d.horarioFin), { message: 'Complete ambas horas del horario laboral', path: ['horarioFin'] });
 
 const esquemaActualizar = esquemaCrear;
 

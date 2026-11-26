@@ -3,7 +3,7 @@
 const bcrypt = require('bcryptjs');
 const usuariosRepo = require('../repositories/usuarios.repository');
 const actividadRepo = require('../repositories/actividad.repository');
-const { ErrorNoEncontrado, ErrorAutorizacion, ErrorConflicto } = require('../utils/errores');
+const { ErrorNoEncontrado, ErrorAutorizacion, ErrorConflicto, ErrorValidacion } = require('../utils/errores');
 const { paginar } = require('../utils/paginacion');
 
 const listar = async ({ pagina, limite, q, rol, activo }) => {
@@ -24,6 +24,7 @@ const obtener = async (id) => {
 const resumen = async () => usuariosRepo.obtenerResumen();
 
 const crear = async ({ nombre, correo, clave, rol }, usuarioSolicitante) => {
+  if(['supervisor','operador'].includes(rol))throw new ErrorValidacion('Cree supervisores y agentes desde Personal para completar sus sedes y su perfil operativo');
   const existe = await usuariosRepo.buscarPorCorreo(correo);
   if (existe) {
     throw new ErrorConflicto('Ya existe un usuario con este correo electrónico');
@@ -48,6 +49,9 @@ const cambiarRol = async (id, rol, usuarioSolicitante) => {
   if (usuarioSolicitante.id === id) {
     throw new ErrorAutorizacion('No puede cambiar su propio rol');
   }
+  if(!['administrador','jefe_operaciones','supervisor','operador'].includes(rol))throw new ErrorValidacion('Rol inválido');
+  const perfil=(await require('../config/db').query('SELECT cargo FROM personal WHERE usuario_id=$1 AND NOT eliminado',[id])).rows[0];
+  if(perfil || ['supervisor','operador'].includes(rol))throw new ErrorValidacion('Cambie el cargo desde Personal para mantener consistentes el rol y las sedes');
   const u = await usuariosRepo.cambiarRol(id, rol);
   if (!u) throw new ErrorNoEncontrado('Usuario no encontrado');
   return u;

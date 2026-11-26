@@ -21,7 +21,8 @@
     "test:roles:integration": "node test/roles-operativos-integracion.cjs",
     "db:demo:verificar": "node database/verificar-flujos-demo.cjs --auditar",
     "db:demo:ensayar": "node database/verificar-flujos-demo.cjs",
-    "db:demo:regularizar": "node database/verificar-flujos-demo.cjs --aplicar"
+    "db:demo:regularizar": "node database/verificar-flujos-demo.cjs --aplicar",
+    "test:sedes:integration": "node test/sedes-multiples-integracion.cjs"
   },
   "keywords": [],
   "author": "",

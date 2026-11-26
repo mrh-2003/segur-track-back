@@ -17,7 +17,7 @@ const obtenerPorId = async (id) => {
 const validarResponsables=async(datos)=>{
  const pool=require('../config/db');
  if(!(await pool.query('SELECT 1 FROM clientes WHERE id=$1 AND NOT eliminado',[datos.clienteId])).rowCount)throw new ErrorValidacion('Cliente no válido');
- if(!(await pool.query("SELECT 1 FROM personal WHERE id=$1 AND NOT eliminado AND estado='activo' AND cargo='supervisor'",[datos.supervisorId])).rowCount)throw new ErrorValidacion('Seleccione un supervisor activo');
+ if(datos.supervisorId && !(await pool.query("SELECT 1 FROM personal WHERE id=$1 AND NOT eliminado AND estado='activo' AND cargo='supervisor'",[datos.supervisorId])).rowCount)throw new ErrorValidacion('Seleccione un supervisor activo');
 };
 const crear = async (datos, usuarioSolicitante) => {
   await validarResponsables(datos);
@@ -44,6 +44,8 @@ const actualizar = async (id, datos, usuarioSolicitante) => {
 };
 
 const eliminar = async (id, usuarioSolicitante) => {
+  const r=await require('../config/db').query(`SELECT 1 FROM personal_sedes ps JOIN personal p ON p.id=ps.personal_id WHERE ps.sede_id=$1 AND NOT p.eliminado UNION ALL SELECT 1 FROM servicios WHERE sede_id=$1 AND NOT eliminado LIMIT 1`,[id]);
+  if(r.rowCount)throw new ErrorConflicto('Reasigne el personal y los servicios antes de eliminar esta sede');
   const sede = await sedesRepo.eliminar(id, usuarioSolicitante);
   if (!sede) throw new ErrorNoEncontrado('Sede no encontrada');
   await actividadRepo.registrar({

@@ -41,3 +41,15 @@ Comandos: `npm run db:demo:verificar` (auditoría), `npm run db:demo:ensayar` (r
 ## Inicio del supervisor
 
 Inicio está disponible para administración, jefatura y supervisión. El supervisor ve únicamente el resumen de sus servicios, agentes de sus servicios o sedes, incidencias y actividad relacionada. La actividad usa trazas vinculadas por servicio; no utiliza la bitácora global. Sin asignaciones, devuelve un resumen vacío. Los accesos rápidos respetan el rol: Mi personal es consulta, sin crear personal ni importar datos. El operador conserva su panel personal.
+
+## Asignación de sedes (25/11/2026)
+
+La migración 017 conserva las sedes actuales en personal_sedes y permite crear sedes sin supervisor predeterminado. Los supervisores requieren una o varias sedes, sin límite; para jefes son opcionales y no limitan su acceso global. Los agentes tienen exactamente una sede. La sede principal se conserva para compatibilidad con turnos, reportes e importadores; triggers diferidos comprueban la cardinalidad al cerrar cada transacción.
+
+Personal muestra un desplegable con búsqueda, casillas y etiquetas para supervisores y jefes. Cambiar sede del agente usa PATCH /personal/:id/sede: administrador y jefe pueden modificar cualquier agente; el supervisor únicamente agentes a su cargo y destinos de sus sedes o servicios. Esta acción no concede edición de cargos, cuentas o contraseñas. El catálogo de destinos aplica el mismo alcance que la escritura.
+
+La creación de supervisores y operadores desde /usuarios se deriva a Personal para exigir su perfil y sedes. Los cambios de cargo de perfiles operativos se realizan desde Personal. Antes de dejar de ser supervisor debe reasignar sus servicios. Las sedes con personal o servicios no se pueden eliminar.
+
+Incidencias ofrece Eliminar a administrador y jefe de operaciones, con confirmación. El borrado es lógico y conserva autor y fecha, seguimiento y evidencias; el registro queda excluido de listas, detalle, indicadores y reportes. Supervisores y agentes no pueden eliminar incidencias.
+
+Validación: npm run test:sedes:integration, npm run test:roles:integration y npm test en backend; lint, build y pruebas de componentes en frontend. Las pruebas de integración usan rollback.

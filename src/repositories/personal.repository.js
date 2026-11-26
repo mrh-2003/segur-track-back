@@ -2,6 +2,11 @@
 
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
+const guardarSedes=async(c,id,ids)=>{
+ await c.query('DELETE FROM personal_sedes WHERE personal_id=$1',[id]);
+ await c.query('INSERT INTO personal_sedes SELECT $1,unnest($2::int[])',[id,ids]);
+ await c.query('UPDATE sedes SET supervisor_id=NULL WHERE supervisor_id=$1 AND NOT(id=ANY($2::int[]))',[id,ids]);
+};
 
 const listar = async ({ limite, offset, q, estado, usuario }) => {
   const condiciones = ['p.eliminado = FALSE'];
@@ -30,6 +35,8 @@ const listar = async ({ limite, offset, q, estado, usuario }) => {
   const { rows } = await pool.query(
     `SELECT p.id, p.nombres, p.apellidos, p.documento, p.cargo, p.estado,p.horario_inicio,p.horario_fin,p.dias_laborales,
             p.correo, p.sede_id, p.usuario_id,
+            ARRAY(SELECT ps.sede_id FROM personal_sedes ps WHERE ps.personal_id=p.id ORDER BY ps.sede_id) AS sede_ids,
+            ARRAY(SELECT se.nombre FROM personal_sedes ps JOIN sedes se ON se.id=ps.sede_id WHERE ps.personal_id=p.id ORDER BY se.nombre) AS sedes,
             s.nombre AS sede,
             (
               SELECT t.hora_inicio || '-' || t.hora_fin
@@ -40,7 +47,7 @@ const listar = async ({ limite, offset, q, estado, usuario }) => {
               LIMIT 1
             ) AS turno_actual
      FROM personal p
-     JOIN sedes s ON p.sede_id = s.id
+     LEFT JOIN sedes s ON p.sede_id = s.id
      WHERE ${where}
      ORDER BY p.apellidos, p.nombres
      LIMIT $${idx} OFFSET $${idx + 1}`,
@@ -66,16 +73,16 @@ const obtenerResumen = async () => {
 
 const obtenerPorId = async (id) => {
   const { rows } = await pool.query(
-    `SELECT p.*, s.nombre AS sede
+    `SELECT p.*, s.nombre AS sede, ARRAY(SELECT sede_id FROM personal_sedes WHERE personal_id=p.id ORDER BY sede_id) AS sede_ids
      FROM personal p
-     JOIN sedes s ON p.sede_id = s.id
+     LEFT JOIN sedes s ON p.sede_id = s.id
      WHERE p.id = $1 AND p.eliminado = FALSE`,
     [id]
   );
   return rows[0] || null;
 };
 
-const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'activo', sedeId, usuarioId, horarioInicio, horarioFin, diasLaborales }) => {
+const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'activo', sedeId, sedeIds, usuarioId, horarioInicio, horarioFin, diasLaborales }) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -118,12 +125,13 @@ const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'a
     const { rows: [nuevoP] } = await client.query(
       `INSERT INTO personal (nombres, apellidos, documento, correo, cargo, estado, sede_id, usuario_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [nombres.trim(), apellidos.trim(), documento.trim(), correoNormalizado, cargo, estado, sedeId, uId]
+      [nombres.trim(), apellidos.trim(), documento.trim(), correoNormalizado, cargo, estado, (sedeIds ?? (sedeId ? [sedeId] : []))[0] || null, uId]
     );
 
     await client.query('UPDATE personal SET horario_inicio=$2,horario_fin=$3,dias_laborales=$4 WHERE id=$1', [nuevoP.id, horarioInicio || null, horarioFin || null, diasLaborales || [0,1,2,3,4,5,6]]);
+    await guardarSedes(client, nuevoP.id, sedeIds ?? (sedeId ? [sedeId] : []));
     await client.query('COMMIT');
-    return nuevoP;
+    return {...nuevoP, sede_ids:sedeIds ?? (sedeId ? [sedeId] : [])};
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -132,7 +140,7 @@ const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'a
   }
 };
 
-const actualizar = async (id, { nombres, apellidos, documento, correo, cargo, estado, sedeId, horarioInicio, horarioFin, diasLaborales }) => {
+const actualizar = async (id, { nombres, apellidos, documento, correo, cargo, estado, sedeId, sedeIds, horarioInicio, horarioFin, diasLaborales }) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -144,7 +152,7 @@ const actualizar = async (id, { nombres, apellidos, documento, correo, cargo, es
            correo = COALESCE($4, correo), cargo = $5, estado = $6,
            sede_id = $7, actualizado_en = NOW()
        WHERE id = $8 AND eliminado = FALSE RETURNING *`,
-      [nombres.trim(), apellidos.trim(), documento.trim(), correoNormalizado, cargo, estado, sedeId, id]
+      [nombres.trim(), apellidos.trim(), documento.trim(), correoNormalizado, cargo, estado, (sedeIds ?? (sedeId ? [sedeId] : []))[0] || null, id]
     );
 
     if(p) await client.query('UPDATE personal SET horario_inicio=$2,horario_fin=$3,dias_laborales=$4 WHERE id=$1', [id, horarioInicio || null, horarioFin || null, diasLaborales || [0,1,2,3,4,5,6]]);
@@ -163,6 +171,7 @@ const actualizar = async (id, { nombres, apellidos, documento, correo, cargo, es
       );
     }
 
+    if (p) await guardarSedes(client, p.id, sedeIds ?? (sedeId ? [sedeId] : []));
     await client.query('COMMIT');
     return p || null;
   } catch (err) {

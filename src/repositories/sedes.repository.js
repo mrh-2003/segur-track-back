@@ -24,7 +24,7 @@ const listar = async ({ limite = 50, offset = 0, q } = {}) => {
     `SELECT s.id, s.nombre, s.direccion, s.creado_en, s.cliente_id, s.supervisor_id,
             (SELECT nombre FROM clientes WHERE id=s.cliente_id) cliente,
             (SELECT nombres||' '||apellidos FROM personal WHERE id=s.supervisor_id) supervisor,
-            (SELECT COUNT(*) FROM personal p WHERE p.sede_id = s.id AND p.eliminado = FALSE) AS personal_total,
+            (SELECT COUNT(*) FROM personal p JOIN personal_sedes ps ON ps.personal_id=p.id WHERE ps.sede_id = s.id AND p.eliminado = FALSE) AS personal_total,
             (SELECT COUNT(*) FROM servicios srv WHERE srv.sede_id = s.id AND srv.eliminado = FALSE) AS servicios_total
      FROM sedes s
      WHERE ${where}
@@ -43,7 +43,8 @@ const obtenerResumen = async () => {
       COUNT(DISTINCT p.id) FILTER (WHERE p.eliminado = FALSE) AS total_personal,
       COUNT(DISTINCT srv.id) FILTER (WHERE srv.eliminado = FALSE AND srv.estado = 'en_curso') AS servicios_activos
     FROM sedes s
-    LEFT JOIN personal p ON p.sede_id = s.id
+    LEFT JOIN personal_sedes ps ON ps.sede_id=s.id
+    LEFT JOIN personal p ON p.id=ps.personal_id
     LEFT JOIN servicios srv ON srv.sede_id = s.id
     WHERE s.eliminado = FALSE
   `);
@@ -53,7 +54,7 @@ const obtenerResumen = async () => {
 const obtenerPorId = async (id) => {
   const { rows } = await pool.query(
     `SELECT s.*,
-            (SELECT COUNT(*) FROM personal p WHERE p.sede_id = s.id AND p.eliminado = FALSE) AS personal_total,
+            (SELECT COUNT(*) FROM personal p JOIN personal_sedes ps ON ps.personal_id=p.id WHERE ps.sede_id = s.id AND p.eliminado = FALSE) AS personal_total,
             (SELECT COUNT(*) FROM servicios srv WHERE srv.sede_id = s.id AND srv.eliminado = FALSE) AS servicios_total
      FROM sedes s
      WHERE s.id = $1 AND s.eliminado = FALSE`,

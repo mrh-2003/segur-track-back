@@ -12,6 +12,7 @@ const comprobar=async(id,u,c=pool)=>{const ids=await serviciosPermitidos(u,c);if
 const alcancePersonal=(u,parametro='$1')=>u?.rol==='supervisor'?`(p.cargo='agente' AND (
  EXISTS(SELECT 1 FROM servicio_personal sp JOIN servicios s ON s.id=sp.servicio_id JOIN personal sup ON sup.id=s.supervisor_id WHERE sp.personal_id=p.id AND NOT sp.eliminado AND NOT s.eliminado AND NOT sup.eliminado AND sup.usuario_id=${parametro})
  OR EXISTS(SELECT 1 FROM servicios s JOIN personal sup ON sup.id=s.supervisor_id WHERE s.sede_id=p.sede_id AND NOT s.eliminado AND NOT sup.eliminado AND sup.usuario_id=${parametro})
+ OR EXISTS(SELECT 1 FROM personal_sedes ps JOIN personal sup ON sup.id=ps.personal_id WHERE ps.sede_id=p.sede_id AND sup.cargo='supervisor' AND NOT sup.eliminado AND sup.usuario_id=${parametro})
  OR EXISTS(SELECT 1 FROM sedes se JOIN personal sup ON sup.id=se.supervisor_id WHERE se.id=p.sede_id AND NOT se.eliminado AND NOT sup.eliminado AND sup.usuario_id=${parametro})))`:u?.rol==='operador'?`p.usuario_id=${parametro}`:'TRUE';
 const comprobarPersonal=async(id,u,c=pool)=>{if(!(await c.query(`SELECT 1 FROM personal p WHERE $1::int IS NOT NULL AND p.id=$2 AND NOT p.eliminado AND ${alcancePersonal(u)}`,[u.id,id])).rowCount)throw new ErrorAutorizacion('Solo puede consultar personal de sus servicios o sedes');};
 const filtrarFuentes=async(data,u)=>{
