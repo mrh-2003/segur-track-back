@@ -10,7 +10,7 @@ module.exports=async(c,{idsExplicitos=false}={})=>{
   const id=idsExplicitos?Number((await c.query('SELECT COALESCE(MAX(id),0)+1 id FROM usuarios')).rows[0].id):null;
   const u=(await c.query(`INSERT INTO usuarios(id,nombre,correo,clave_hash,rol,activo,debe_cambiar_clave)
    VALUES(COALESCE($1::int,nextval(pg_get_serial_sequence('public.usuarios','id'))),$2,$3,$4,$5,TRUE,FALSE)
-   ON CONFLICT(correo) DO UPDATE SET nombre=usuarios.nombre RETURNING id,rol,activo,eliminado`,[id,p.nombres+' '+p.apellidos,correo,hash,rol])).rows[0];
+   ON CONFLICT (lower(btrim(correo))) WHERE NOT eliminado DO UPDATE SET nombre=usuarios.nombre RETURNING id,rol,activo,eliminado`,[id,p.nombres+' '+p.apellidos,correo,hash,rol])).rows[0];
   if(u.rol!==rol||!u.activo||u.eliminado)throw new Error('Cuenta sintética existente incompatible: '+correo);
   await c.query('UPDATE personal SET usuario_id=$2 WHERE id=$1 AND usuario_id IS NULL',[p.id,u.id]);
  }

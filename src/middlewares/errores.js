@@ -12,10 +12,17 @@ const manejarErrores = (err, req, res, next) => {
   }
 
   if (err.code === '23505') {
+    const conflictos = {
+      uidx_personal_documento: ['documento', 'Ya existe personal registrado con este DNI.'],
+      usuarios_correo_key: ['correo', 'Ya existe una cuenta activa con este correo electrónico.'],
+      uidx_usuarios_correo_activo: ['correo', 'Ya existe una cuenta activa con este correo electrónico.'],
+      uidx_personal_usuario_activo: ['correo', 'Esta cuenta ya está vinculada a otra persona.'],
+    };
+    const conflicto = conflictos[err.constraint];
     return res.status(409).json({
       ok:      false,
-      mensaje: 'El registro ya existe o viola una restricción de unicidad',
-      errores: [],
+      mensaje: conflicto?.[1] || 'Ya existe un registro con estos datos.',
+      errores: conflicto ? [{ campo: conflicto[0], mensaje: conflicto[1] }] : [],
     });
   }
 

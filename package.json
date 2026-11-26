@@ -22,7 +22,8 @@
     "db:demo:verificar": "node database/verificar-flujos-demo.cjs --auditar",
     "db:demo:ensayar": "node database/verificar-flujos-demo.cjs",
     "db:demo:regularizar": "node database/verificar-flujos-demo.cjs --aplicar",
-    "test:sedes:integration": "node test/sedes-multiples-integracion.cjs"
+    "test:sedes:integration": "node test/sedes-multiples-integracion.cjs",
+    "test:personal:integration": "node test/alta-personal-unicidad-integracion.cjs"
   },
   "keywords": [],
   "author": "",

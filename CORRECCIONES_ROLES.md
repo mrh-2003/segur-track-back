@@ -53,3 +53,11 @@ La creación de supervisores y operadores desde /usuarios se deriva a Personal p
 Incidencias ofrece Eliminar a administrador y jefe de operaciones, con confirmación. El borrado es lógico y conserva autor y fecha, seguimiento y evidencias; el registro queda excluido de listas, detalle, indicadores y reportes. Supervisores y agentes no pueden eliminar incidencias.
 
 Validación: npm run test:sedes:integration, npm run test:roles:integration y npm test en backend; lint, build y pruebas de componentes en frontend. Las pruebas de integración usan rollback.
+
+## Alta de personal y correos de cuentas eliminadas
+
+Se reprodujo el error 23505 de usuarios_correo_key al crear un jefe con el correo de una cuenta eliminada. La migración 018 reemplaza la unicidad global por un índice sobre el correo normalizado de cuentas no eliminadas. El historial de la cuenta anterior se conserva y la nueva persona obtiene otra cuenta; no se reactiva ni se reasigna la identidad eliminada. Se impide vincular una cuenta a varios perfiles vigentes y convertir cuentas de otro rol durante un alta.
+
+Los conflictos activos indican el campo concreto (correo o DNI). El formulario conserva sus valores y muestra los errores dentro del modal, con bloqueo de envíos simultáneos mientras guarda. Se actualizaron los upserts de recuperación y preparación demo para el nuevo índice.
+
+Migración aplicada con npm run db:migrate. Regresión transaccional: npm run test:personal:integration (14 comprobaciones, rollback).

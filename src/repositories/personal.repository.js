@@ -96,30 +96,27 @@ const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'a
       ? 'supervisor'
       : 'operador';
 
-    if (!uId) {
-      const { rows: uExistente } = await client.query(
-        'SELECT id FROM usuarios WHERE correo = $1 AND eliminado = FALSE',
-        [correoNormalizado]
-      );
-
-      if (uExistente.length > 0) {
-        uId = uExistente[0].id;
-        await client.query(
-          `UPDATE usuarios
-           SET nombre = $1, rol = $2, activo = $3, actualizado_en = NOW()
-           WHERE id = $4`,
-          [`${nombres.trim()} ${apellidos.trim()}`, rolUsuario, activoBool, uId]
-        );
-      } else {
-        const hash = await bcrypt.hash(correoNormalizado, 10);
-        const { rows: nuevoU } = await client.query(
-          `INSERT INTO usuarios (nombre, correo, clave_hash, rol, activo, debe_cambiar_clave)
-           VALUES ($1, $2, $3, $4, $5, TRUE)
-           RETURNING id`,
-          [`${nombres.trim()} ${apellidos.trim()}`, correoNormalizado, hash, rolUsuario, activoBool]
-        );
-        uId = nuevoU[0].id;
-      }
+    const cuenta = (await client.query(
+      uId ? 'SELECT id,correo,rol FROM usuarios WHERE id=$1 AND NOT eliminado FOR UPDATE'
+          : 'SELECT id,correo,rol FROM usuarios WHERE lower(btrim(correo))=$1 AND NOT eliminado FOR UPDATE',
+      [uId || correoNormalizado]
+    )).rows[0];
+    const {ErrorConflicto,ErrorValidacion}=require('../utils/errores');
+    if(uId && (!cuenta || cuenta.correo.trim().toLowerCase()!==correoNormalizado))
+      throw new ErrorValidacion('La cuenta seleccionada no corresponde al correo de esta persona');
+    if(cuenta){
+      if(cuenta.rol!==rolUsuario || (await client.query('SELECT 1 FROM personal WHERE usuario_id=$1 AND NOT eliminado',[cuenta.id])).rowCount)
+        throw new ErrorConflicto('Este correo ya pertenece a una cuenta activa. Edite el registro existente o use otro correo');
+      uId=cuenta.id;
+      await client.query('UPDATE usuarios SET nombre=$1,activo=$2,actualizado_en=NOW() WHERE id=$3',[
+        nombres.trim()+' '+apellidos.trim(),activoBool,uId
+      ]);
+    }else{
+      const hash=await bcrypt.hash(correoNormalizado,10);
+      uId=(await client.query(
+        'INSERT INTO usuarios(nombre,correo,clave_hash,rol,activo,debe_cambiar_clave) VALUES($1,$2,$3,$4,$5,TRUE) RETURNING id',
+        [nombres.trim()+' '+apellidos.trim(),correoNormalizado,hash,rolUsuario,activoBool]
+      )).rows[0].id;
     }
 
     const { rows: [nuevoP] } = await client.query(
@@ -271,7 +268,7 @@ const reiniciarClave = async (id) => {
     const { rows: [u] } = await pool.query(
       `INSERT INTO usuarios (nombre, correo, clave_hash, rol, activo, debe_cambiar_clave)
        VALUES ($1, $2, $3, $4, TRUE, TRUE)
-       ON CONFLICT (correo) DO UPDATE
+       ON CONFLICT (lower(btrim(correo))) WHERE NOT eliminado DO UPDATE
        SET clave_hash = EXCLUDED.clave_hash, debe_cambiar_clave = TRUE, actualizado_en = NOW()
        RETURNING id`,
       [`${p.nombres} ${p.apellidos}`, p.correo.trim().toLowerCase(), hash, rol]
