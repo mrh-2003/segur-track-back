@@ -77,3 +77,9 @@ La autenticación consulta el estado y rol vigentes de la cuenta: los tokens ant
 ## Retiro de Administrativo
 
 Los únicos cargos admitidos son Administrador, Jefe de Operaciones, Supervisor y Agente. Administrativo se retiró del formulario, validadores, documentación de API, esquema e instaladores y generadores de ejemplo. La migración 020 convierte registros antiguos al cargo Administrador (y su cuenta vigente al mismo rol) y restringe personal_cargo_check a los cuatro cargos admitidos. Administrador mantiene las sedes opcionales.
+
+## Cuentas base y acciones de tablas
+
+Se verificaron las cuatro cuentas base admin@segurtrack.com, supervisor@segurtrack.com, jefe@segurtrack.com y operador@segurtrack.com. Todas quedan activas con la contraseña indicada por el usuario y sin cambio de clave obligatorio. Se conservaron sus nombres, documentos y asignaciones vigentes. La contraseña solo se recibe en CUENTAS_BASE_CLAVE; el script npm run db:cuentas:base no se ejecuta automáticamente y no contiene credenciales en texto.
+
+Las columnas de acciones usan botones de icono con tooltip al pasar el cursor o enfocar, etiqueta accesible y ayuda cuando están bloqueados. La regla se comprueba en el frontend mediante test/acciones-tablas.test.mjs.
