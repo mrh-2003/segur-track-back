@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS personal (
   nombres        VARCHAR(80)  NOT NULL,
   apellidos      VARCHAR(80)  NOT NULL,
   documento      VARCHAR(20)  NOT NULL,
-  cargo          VARCHAR(20)  NOT NULL CHECK (cargo IN ('jefe_operaciones','supervisor','agente','administrativo')),
+  cargo          VARCHAR(20)  NOT NULL CHECK (cargo IN ('administrador','jefe_operaciones','supervisor','agente')),
   estado         VARCHAR(10)  NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','inactivo')),
   correo         VARCHAR(120),
   sede_id        INT          NOT NULL REFERENCES sedes(id),

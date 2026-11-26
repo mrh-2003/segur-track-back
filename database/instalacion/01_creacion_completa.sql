@@ -1782,7 +1782,7 @@ CREATE TABLE public.personal (
     horario_inicio time without time zone,
     horario_fin time without time zone,
     dias_laborales integer[] DEFAULT ARRAY[0, 1, 2, 3, 4, 5, 6] NOT NULL,
-    CONSTRAINT personal_cargo_check CHECK (((cargo)::text = ANY ((ARRAY['jefe_operaciones'::character varying, 'supervisor'::character varying, 'agente'::character varying, 'administrativo'::character varying])::text[]))),
+    CONSTRAINT personal_cargo_check CHECK (((cargo)::text = ANY ((ARRAY['administrador'::character varying, 'jefe_operaciones'::character varying, 'supervisor'::character varying, 'agente'::character varying])::text[]))),
     CONSTRAINT personal_dias_validos CHECK ((dias_laborales <@ ARRAY[0, 1, 2, 3, 4, 5, 6])),
     CONSTRAINT personal_estado_check CHECK (((estado)::text = ANY ((ARRAY['activo'::character varying, 'inactivo'::character varying])::text[]))),
     CONSTRAINT personal_horario_completo CHECK (((horario_inicio IS NULL) = (horario_fin IS NULL)))

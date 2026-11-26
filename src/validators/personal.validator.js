@@ -7,7 +7,7 @@ const esquemaCrear = z.object({
   apellidos: z.string().min(2, 'Apellidos requeridos'),
   documento: z.string().length(8, 'El DNI debe tener 8 dígitos').regex(/^\d+$/, 'Solo dígitos'),
   correo: z.string().email('Correo electrónico válido requerido'),
-  cargo: z.enum(['administrador', 'jefe_operaciones', 'supervisor', 'agente', 'administrativo'], { message: 'Cargo inválido' }),
+  cargo: z.enum(['administrador', 'jefe_operaciones', 'supervisor', 'agente'], { message: 'Cargo inválido' }),
   estado: z.enum(['activo', 'inactivo']).optional().default('activo'),
   sedeId: z.number().int().positive().nullable().optional(),
   sedeIds: z.array(z.number().int().positive()).optional(),

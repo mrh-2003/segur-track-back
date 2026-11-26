@@ -14,8 +14,8 @@ const pool=require('../src/config/db');
   return c.query(sql,p);
  }});
  try{
-  const nombre='019_administrador_sedes_opcionales.sql';
-  if(!(await c.query('SELECT 1 FROM migraciones_aplicadas WHERE nombre=$1',[nombre])).rowCount)await c.query(fs.readFileSync(path.join(__dirname,'../database/migrations',nombre),'utf8'));
+  for(const nombre of ['019_administrador_sedes_opcionales.sql','020_retirar_cargo_administrativo.sql'])
+   if(!(await c.query('SELECT 1 FROM migraciones_aplicadas WHERE nombre=$1',[nombre])).rowCount)await c.query(fs.readFileSync(path.join(__dirname,'../database/migrations',nombre),'utf8'));
   const root=(await c.query("SELECT id,rol FROM usuarios WHERE rol='administrador' AND activo AND NOT eliminado ORDER BY id LIMIT 1")).rows[0];
   assert.ok(root,'Se requiere la cuenta admin conservada');
   server=require('../src/app').listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
@@ -26,6 +26,11 @@ const pool=require('../src/config/db');
   const d=datos('administrador'),nuevo=await api('/personal',root,'POST',d);
   check(nuevo.status===201,'Crear administrador sin sede: '+JSON.stringify(nuevo.body));
   const p=nuevo.body.datos,admin={id:p.usuario_id,rol:'administrador'};
+  check((await api('/personal',root,'POST',{...d,documento:String(++dni),correo:'retirado-'+d.correo,cargo:'administrativo'})).status===422,'La API rechaza el cargo Administrativo retirado');
+  await c.query('SAVEPOINT cargo_retirado');
+  await assert.rejects(()=>c.query("UPDATE personal SET cargo='administrativo' WHERE id=$1",[p.id]),e=>e.code==='23514');checks++;
+  await c.query('ROLLBACK TO SAVEPOINT cargo_retirado');
+  await c.query('RELEASE SAVEPOINT cargo_retirado');
   check(p.sede_id===null&&p.sede_ids.length===0,'Sede opcional persistida');
   check((await c.query('SELECT rol FROM usuarios WHERE id=$1',[admin.id])).rows[0].rol==='administrador','El cargo conserva el rol administrador');
   const login=await api('/auth/login',root,'POST',{correo:d.correo,clave:d.correo});

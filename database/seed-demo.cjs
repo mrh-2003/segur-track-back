@@ -285,7 +285,7 @@ async function generar() {
       nombres: 'Adriana',
       apellidos: 'Mendoza Ruiz',
       documento: '80000070',
-      cargo: 'administrativo',
+      cargo: 'administrador',
       estado: 'activo',
       correo: 'admin@segurtrack.com',
       sede_id: 1,

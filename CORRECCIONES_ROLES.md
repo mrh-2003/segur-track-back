@@ -73,3 +73,7 @@ Jefatura no puede crear administradores, promover perfiles a administrador, modi
 Prueba transaccional: npm run test:admin:integration. La migración se aplica con npm run db:migrate. Los registros de prueba se revierten y no repueblan la base limpiada.
 
 La autenticación consulta el estado y rol vigentes de la cuenta: los tokens anteriores no conservan permisos tras un cambio de rol y una cuenta eliminada o inactiva ya no puede usar sus sesiones.
+
+## Retiro de Administrativo
+
+Los únicos cargos admitidos son Administrador, Jefe de Operaciones, Supervisor y Agente. Administrativo se retiró del formulario, validadores, documentación de API, esquema e instaladores y generadores de ejemplo. La migración 020 convierte registros antiguos al cargo Administrador (y su cuenta vigente al mismo rol) y restringe personal_cargo_check a los cuatro cargos admitidos. Administrador mantiene las sedes opcionales.

@@ -58,13 +58,15 @@ const swaggerDocument = {
       },
       PersonalEntrada: {
         type: 'object',
-        required: ['nombres', 'apellidos', 'documento', 'cargo', 'sedeId'],
+        required: ['nombres', 'apellidos', 'documento', 'correo', 'cargo'],
         properties: {
           nombres: { type: 'string', example: 'Carlos' },
           apellidos: { type: 'string', example: 'Mendoza' },
           documento: { type: 'string', example: '44556677' },
-          cargo: { type: 'string', enum: ['supervisor', 'agente', 'administrativo'], example: 'agente' },
-          sedeId: { type: 'integer', example: 1 },
+          cargo: { type: 'string', enum: ['administrador', 'jefe_operaciones', 'supervisor', 'agente'], example: 'agente' },
+          correo: { type: 'string', format: 'email' },
+          sedeId: { type: 'integer', nullable: true, description: 'Una única sede para agentes. Opcional para administradores y jefes.', example: 1 },
+          sedeIds: { type: 'array', items: { type: 'integer' }, description: 'Obligatorio al menos uno para supervisores; opcional para administradores y jefes.' },
           usuarioId: { type: 'integer', nullable: true, example: null },
         },
       },
@@ -228,7 +230,7 @@ const swaggerDocument = {
         parameters: [
           { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Búsqueda por nombre o documento' },
           { name: 'estado', in: 'query', schema: { type: 'string', enum: ['activo', 'inactivo'] } },
-          { name: 'cargo', in: 'query', schema: { type: 'string', enum: ['supervisor', 'agente', 'administrativo'] } },
+          { name: 'cargo', in: 'query', schema: { type: 'string', enum: ['administrador', 'jefe_operaciones', 'supervisor', 'agente'] } },
           { name: 'pagina', in: 'query', schema: { type: 'integer', default: 1 } },
           { name: 'limite', in: 'query', schema: { type: 'integer', default: 10 } },
         ],
