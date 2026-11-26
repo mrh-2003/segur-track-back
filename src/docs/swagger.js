@@ -114,7 +114,7 @@ const swaggerDocument = {
           tipoIncidenciaId: { type: 'integer', example: 1 },
           servicioId: { type: 'integer', example: 1 },
           descripcion: { type: 'string', example: 'Intento de acceso fuera de horario' },
-          prioridad: { type: 'string', enum: ['alta', 'media', 'baja'], example: 'media' },
+          prioridad: { type: 'string', enum: ['critica', 'alta', 'media', 'baja'], example: 'media' },
         },
       },
       EstadoIncidenciaEntrada: {
@@ -488,7 +488,7 @@ const swaggerDocument = {
           { name: 'q', in: 'query', schema: { type: 'string' } },
           { name: 'tipoId', in: 'query', schema: { type: 'integer' } },
           { name: 'estado', in: 'query', schema: { type: 'string', enum: ['abierta', 'en_atencion', 'cerrada'] } },
-          { name: 'prioridad', in: 'query', schema: { type: 'string', enum: ['alta', 'media', 'baja'] } },
+          { name: 'prioridad', in: 'query', schema: { type: 'string', enum: ['critica', 'alta', 'media', 'baja'] } },
           { name: 'pagina', in: 'query', schema: { type: 'integer', default: 1 } },
           { name: 'limite', in: 'query', schema: { type: 'integer', default: 10 } },
         ],

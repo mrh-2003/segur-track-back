@@ -8,6 +8,15 @@ const turno=(x={})=>({id:1,servicio_id:1,personal_id:1,dia:'2026-11-18',inicio_p
 const fuentes=(x={})=>({evidenciasServicio:[],verificacionesConsignas:[],rondas:[],obligaciones:[],...x});
 const obligacion=(x={})=>({turno_id:1,tipo:'actividad',fecha_limite:'2026-11-18T19:00:00Z',fecha_completada:'2026-11-18T19:00:00Z',...x});
 const incidencia=(x={})=>({servicio_id:1,fecha_registro:'2026-11-18T11:00:00Z',sla_min:60,sla_resolucion_min:120,fecha_atencion:'2026-11-18T12:00:00Z',fecha_cierre:'2026-11-18T13:00:00Z',estado:'cerrada',...x});
+
+test('las incidencias críticas se aceptan y preceden a las altas sin cambiar su SLA explícito',()=>{
+ const {esquemaCrear}=require('../src/validators/incidencias.validator');
+ const entrada=esquemaCrear.parse({tipoIncidenciaId:1,servicioId:1,descripcion:'Incidencia crítica de prueba',prioridad:'critica',slaMin:15,slaResolucionMin:60});
+ assert.equal(entrada.slaMin,15);assert.equal(entrada.slaResolucionMin,60);
+ const inc=['baja','alta','critica','media'].map((prioridad,id)=>incidencia({id,prioridad,estado:'abierta',fecha_atencion:null,fecha_cierre:null}));
+ const r=evaluarFuentes({servicios:[{id:1,nombre:'Servicio'}],turnos:[turno()],incidencias:inc,criterios:defs,corte,...fuentes()},{periodo:'todos'});
+ assert.deepEqual(r.criticas.map(i=>i.prioridad),['critica','alta','media','baja']);
+});
 test('los diez KPI tienen cantidades independientes y criticidad reproducible',()=>{
  const r=calcular([turno(),turno({id:2,ingreso_real:null})],[incidencia(),incidencia({estado:'abierta',fecha_atencion:null,fecha_cierre:null})],defs,corte,fuentes({
  evidenciasServicio:[{turno_id:1,protocolo_id:1,estado_revision:'aprobada',fecha_revision:corte},{turno_id:1,protocolo_id:1,estado_revision:'observada',fecha_revision:corte}],

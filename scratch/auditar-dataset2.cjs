@@ -1,0 +1,23 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path');
+const pool=require('../src/config/db');
+(async()=>{const c=await pool.connect();try{
+ await c.query('BEGIN READ ONLY');
+ const info={};
+ info.columnas=(await c.query(`SELECT table_name,column_name,data_type,is_nullable,column_default,character_maximum_length FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name,ordinal_position`)).rows;
+ info.restricciones=(await c.query(`SELECT conrelid::regclass::text tabla,conname,pg_get_constraintdef(oid) definicion FROM pg_constraint WHERE connamespace='public'::regnamespace ORDER BY 1,2`)).rows;
+ info.triggers=(await c.query(`SELECT tgrelid::regclass::text tabla,tgname,pg_get_triggerdef(oid) definicion FROM pg_trigger WHERE NOT tgisinternal AND tgrelid IN(SELECT oid FROM pg_class WHERE relnamespace='public'::regnamespace)`)).rows;
+ info.funciones=(await c.query(`SELECT proname,pg_get_functiondef(oid) definicion FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN('completar_plazos_incidencia','notificar_asignacion_turno','programar_plan_turno','comprobar_cantidad_sedes')`)).rows;
+ info.migraciones=(await c.query(`SELECT * FROM migraciones_aplicadas ORDER BY 1`)).rows;
+ info.conteos={};for(const t of ['usuarios','clientes','sedes','personal','servicios','turnos','incidencias','protocolos','evidencias_servicio','criterios_mcda','modelo_operativo','importaciones']) info.conteos[t]=Number((await c.query(`SELECT count(*) n FROM ${t}`)).rows[0].n);
+ info.cuentasCoincidentes=(await c.query(`SELECT id,correo,rol,activo,eliminado FROM usuarios WHERE correo LIKE '%@example.invalid' ORDER BY id`)).rows;
+ info.config=(await c.query(`SELECT * FROM configuracion_operativa`)).rows;
+ info.modelo=(await c.query(`SELECT * FROM modelo_operativo ORDER BY codigo`)).rows;
+ info.tipos=(await c.query(`SELECT id,nombre,eliminado FROM tipos_incidencia ORDER BY id`)).rows;
+ info.servicios=(await c.query(`SELECT id,nombre,codigo_externo FROM servicios ORDER BY id`)).rows;
+ info.admins=(await c.query(`SELECT id,nombre,rol FROM usuarios WHERE rol='administrador' AND activo AND NOT eliminado`)).rows;
+ info.importaciones=(await c.query(`SELECT id,nombre,estado,resultado FROM importaciones ORDER BY creado_en DESC LIMIT 10`)).rows;
+ await c.query('ROLLBACK');
+ const destino=path.resolve(__dirname,'../../outputs/auditoria_dataset/base-antes.json');fs.writeFileSync(destino,JSON.stringify(info,null,2));
+ console.log(JSON.stringify({conteos:info.conteos,coincidencias:info.cuentasCoincidentes.length,config:info.config,tipos:info.tipos,admins:info.admins,migraciones:info.migraciones,importaciones:info.importaciones},null,2));
+}catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}})().catch(e=>{console.error(e.message);process.exitCode=1}).finally(()=>pool.end());

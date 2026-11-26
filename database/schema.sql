@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS incidencias (
   servicio_id         INT          NOT NULL REFERENCES servicios(id),
   personal_id         INT          REFERENCES personal(id),
   descripcion         TEXT,
-  prioridad           VARCHAR(5)   NOT NULL CHECK (prioridad IN ('alta','media','baja')),
+  prioridad           VARCHAR(7)   NOT NULL CHECK (prioridad IN ('critica','alta','media','baja')),
   estado              VARCHAR(12)  NOT NULL DEFAULT 'abierta'
                       CHECK (estado IN ('abierta','en_atencion','cerrada')),
   fecha_registro      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),

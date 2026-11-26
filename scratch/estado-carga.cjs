@@ -1,0 +1,1 @@
+const p=require('../src/config/db');p.query(`SELECT pid,state,wait_event_type,wait_event,now()-query_start duracion,left(query,100) consulta FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND state<>'idle'`).then(r=>console.log(JSON.stringify(r.rows,null,2))).catch(e=>{console.error(e.message);process.exitCode=1}).finally(()=>p.end());

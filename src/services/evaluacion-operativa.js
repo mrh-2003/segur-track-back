@@ -264,8 +264,8 @@ function evaluarFuentes(data, query = {}) {
     .filter((i) => i.estado !== 'cerrada')
     .sort(
       (a, b) =>
-        ({ alta: 0, media: 1, baja: 2 })[a.prioridad] -
-          { alta: 0, media: 1, baja: 2 }[b.prioridad] ||
+        ({ critica: -1, alta: 0, media: 1, baja: 2 })[a.prioridad] -
+          { critica: -1, alta: 0, media: 1, baja: 2 }[b.prioridad] ||
         new Date(a.fecha_registro) - new Date(b.fecha_registro)
     );
   return {
