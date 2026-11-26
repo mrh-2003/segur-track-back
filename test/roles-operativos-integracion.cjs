@@ -120,7 +120,7 @@ const incidencias=require('../src/services/incidencias-operativas.service');
   check((await api('/multicriterio/mi-operacion',agente)).status===200,'Endpoint monitor propio');
   check((await api('/turnos/semana?desde=2026-01-01&hasta=2030-12-31',agente)).body.datos.length===1,'API turnos propios');
   check((await api('/notificaciones',agente)).body.datos.every(n=>n.usuario_id===agente.id),'Notificaciones privadas');
-  check((await api(`/incidencias/${i.id}/ampliaciones`,admin,'POST',peticion)).status===403,'Administrador no suplanta al solicitante');
+  check((await api(`/incidencias/${i.id}/ampliaciones`,admin,'POST',peticion)).status===409,'Administrador también respeta el cierre de la incidencia');
   const diagnostico=await op.opcionesTurno({fecha:turnoDatos.fecha,horaInicio:turnoDatos.horaInicio,horaFin:turnoDatos.horaFin},sup);
   const cruce=diagnostico.personal.find(p=>p.personalId===agente.personalId&&p.servicioId===s.id);
   check(cruce && !cruce.disponible && cruce.motivos.some(m=>m.includes('Cruce de horarios')&&m.includes(s.nombre)),'El personal con cruce permanece visible con su servicio y horario conflictivo');

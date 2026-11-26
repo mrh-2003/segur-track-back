@@ -50,7 +50,7 @@ const flujo=require('../src/services/incidencias-flujo.service'),op=require('../
   await flujo.decidir(i.id,siguiente.id,{decision:'rechazada',comentario:'El apoyo disponible permite concluir dentro del plazo vigente'},jefe);
   assert.equal(+new Date((await flujo.detalle(i.id,operador)).plazo_resolucion),+new Date(futuro));
   const propia=await op.guardar(null,{tipoIncidenciaId:tipo,servicioId:base.servicio_id,responsableId:base.personal_id,descripcion:'PRUEBA: impedir aprobación propia de ampliación',prioridad:'alta'},admin);
-  const aut=await flujo.solicitar(propia.id,{motivo:'Solicitud creada por el administrador para probar separación',plazoSolicitado:new Date(Date.now()+10*3600000).toISOString()},sup);
+  const aut=await flujo.solicitar(propia.id,{motivo:'Solicitud creada por el administrador para probar separación',plazoSolicitado:new Date(Date.now()+10*3600000).toISOString()},admin);
   await assert.rejects(()=>flujo.decidir(propia.id,aut.id,{decision:'aprobada',comentario:'Intento propio'},admin),e=>e.codigo===403);
   server=require('../src/app').listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
   const jwt=require('jsonwebtoken'),secret=require('../src/config/env').JWT_SECRET,url='http://127.0.0.1:'+server.address().port+'/api/v1';

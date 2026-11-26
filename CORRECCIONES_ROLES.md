@@ -61,3 +61,15 @@ Se reprodujo el error 23505 de usuarios_correo_key al crear un jefe con el corre
 Los conflictos activos indican el campo concreto (correo o DNI). El formulario conserva sus valores y muestra los errores dentro del modal, con bloqueo de envíos simultáneos mientras guarda. Se actualizaron los upserts de recuperación y preparación demo para el nuevo índice.
 
 Migración aplicada con npm run db:migrate. Regresión transaccional: npm run test:personal:integration (14 comprobaciones, rollback).
+
+## Administrador con sedes opcionales
+
+El administrador tiene acceso global en el middleware de autorización y puede crear, editar y eliminar registros de todos los módulos, así como solicitar y decidir ampliaciones de incidencias. Se conservan las reglas de integridad del flujo, incluida la separación entre solicitante y revisor.
+
+Personal incorpora el cargo Administrador exclusivamente para cuentas administradoras. Las sedes son opcionales y se pueden elegir varias, igual que para jefe de operaciones; no delimitan el acceso global. La migración 019 amplía el cargo permitido y conserva las asignaciones múltiples al editar el perfil. Los mapeos de creación, edición y recuperación de contraseña mantienen el rol administrador.
+
+Jefatura no puede crear administradores, promover perfiles a administrador, modificar o eliminar sus perfiles ni reiniciar sus claves. La protección se comprueba en el backend y se refleja en el formulario y la tabla de Personal.
+
+Prueba transaccional: npm run test:admin:integration. La migración se aplica con npm run db:migrate. Los registros de prueba se revierten y no repueblan la base limpiada.
+
+La autenticación consulta el estado y rol vigentes de la cuenta: los tokens anteriores no conservan permisos tras un cambio de rol y una cuenta eliminada o inactiva ya no puede usar sus sesiones.

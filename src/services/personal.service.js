@@ -2,7 +2,17 @@
 
 const personalRepo = require('../repositories/personal.repository');
 const actividadRepo = require('../repositories/actividad.repository');
-const { ErrorNoEncontrado, ErrorConflicto, ErrorValidacion } = require('../utils/errores');
+const { ErrorNoEncontrado, ErrorConflicto, ErrorValidacion, ErrorAutorizacion } = require('../utils/errores');
+
+const comprobarGestionAdministrador=async(id,datos,solicitante)=>{
+  const pool=require('../config/db');
+  const actor=(await pool.query('SELECT id,rol FROM usuarios WHERE id=$1 AND activo AND NOT eliminado',[solicitante])).rows[0];
+  if(!actor)throw new ErrorAutorizacion();
+  const protegido=id&&(await pool.query(`SELECT 1 FROM personal p LEFT JOIN usuarios u ON u.id=p.usuario_id
+    WHERE p.id=$1 AND NOT p.eliminado AND (p.cargo='administrador' OR u.rol='administrador')`,[id])).rowCount;
+  if(actor.rol!=='administrador'&&(datos?.cargo==='administrador'||protegido))
+    throw new ErrorAutorizacion('Solo un administrador puede gestionar cuentas administradoras');
+};
 
 const listar = async (filtros) => personalRepo.listar(filtros);
 
@@ -22,6 +32,7 @@ const validarSedes=async(datos)=>{
  if(r.rowCount!==ids.length)throw new ErrorValidacion('Seleccione sedes vigentes');
 };
 const crear = async (datos, usuarioSolicitante) => {
+  await comprobarGestionAdministrador(null,datos,usuarioSolicitante);
   await validarSedes(datos);
   const p = await personalRepo.crear(datos);
   await actividadRepo.registrar({
@@ -33,6 +44,7 @@ const crear = async (datos, usuarioSolicitante) => {
 };
 
 const actualizar = async (id, datos, usuarioSolicitante) => {
+  await comprobarGestionAdministrador(id,datos,usuarioSolicitante);
   await validarSedes(datos);
   if(datos.cargo!=='supervisor' && (await require('../config/db').query('SELECT 1 FROM servicios WHERE supervisor_id=$1 AND NOT eliminado',[id])).rowCount)throw new ErrorConflicto('Reasigne los servicios de este supervisor antes de cambiar su cargo');
   const p = await personalRepo.actualizar(id, datos);
@@ -46,6 +58,7 @@ const actualizar = async (id, datos, usuarioSolicitante) => {
 };
 
 const cambiarEstado = async (id, estado, usuarioSolicitante) => {
+  await comprobarGestionAdministrador(id,null,usuarioSolicitante);
   const p = await personalRepo.cambiarEstado(id, estado);
   if (!p) throw new ErrorNoEncontrado('Personal no encontrado');
   await actividadRepo.registrar({
@@ -57,12 +70,14 @@ const cambiarEstado = async (id, estado, usuarioSolicitante) => {
 };
 
 const eliminar = async (id, usuarioSolicitante) => {
+  await comprobarGestionAdministrador(id,null,usuarioSolicitante);
   const p = await personalRepo.eliminar(id, usuarioSolicitante);
   if (!p) throw new ErrorNoEncontrado('Personal no encontrado');
   return p;
 };
 
 const reiniciarClave = async (id, usuarioSolicitante) => {
+  await comprobarGestionAdministrador(id,null,usuarioSolicitante);
   const p = await personalRepo.reiniciarClave(id);
   if (!p) throw new ErrorNoEncontrado('Personal no encontrado');
   await actividadRepo.registrar({

@@ -46,7 +46,7 @@ async function detalle(id,u){
   await c.query('COMMIT');
   return {...i,plazo_resolucion:plazo,plazo_original:new Date(+new Date(i.fecha_registro)+Number(i.sla_resolucion_min)*60000).toISOString(),corte,
    vencida:i.estado!=='cerrada'&&+new Date(plazo)<+new Date(corte),seguimiento,ampliaciones,
-   permisos:{operar:puedeOperar&&i.estado!=='cerrada',asignar:i.estado!=='cerrada'&&(gestores.includes(u.rol)||u.rol==='supervisor'),solicitar:u.rol==='supervisor'&&i.estado!=='cerrada'&&!pendiente,revisar:!!pendiente&&i.estado!=='cerrada'&&pendiente.solicitado_por!==u.id&&u.rol==='jefe_operaciones'}};
+   permisos:{operar:puedeOperar&&i.estado!=='cerrada',asignar:i.estado!=='cerrada'&&(gestores.includes(u.rol)||u.rol==='supervisor'),solicitar:['administrador','supervisor'].includes(u.rol)&&i.estado!=='cerrada'&&!pendiente,revisar:!!pendiente&&i.estado!=='cerrada'&&pendiente.solicitado_por!==u.id&&gestores.includes(u.rol)}};
  }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
 }
 async function actuar(id,d,u){
@@ -67,7 +67,7 @@ async function actuar(id,d,u){
 }
 async function solicitar(id,d,u){
  u=await actor(u);return tx(u.id,'Solicitud de ampliación de incidencia',async c=>{
-  if(u.rol!=='supervisor')throw new ErrorAutorizacion('Solo el supervisor solicita ampliaciones');
+  if(!['administrador','supervisor'].includes(u.rol))throw new ErrorAutorizacion('Solo el supervisor o el administrador solicita ampliaciones');
   const i=await bloquear(id,u,c,false);if(i.estado==='cerrada')throw new ErrorConflicto('No se amplía una incidencia resuelta');
   const ahora=+(await c.query('SELECT clock_timestamp() ahora')).rows[0].ahora;
   if(!i.sla_resolucion_min)throw new ErrorConflicto('La incidencia no tiene un plazo de resolución definido');
@@ -81,7 +81,7 @@ async function solicitar(id,d,u){
 async function decidir(id,solicitudId,d,u){
  u=await actor(u);return tx(u.id,'Decisión de ampliación de incidencia',async c=>{
   const i=await bloquear(id,u,c,false);
-  if(u.rol!=='jefe_operaciones')throw new ErrorAutorizacion('Solo el jefe de operaciones puede decidir la ampliación');
+  if(!gestores.includes(u.rol))throw new ErrorAutorizacion('Solo el jefe de operaciones o el administrador puede decidir la ampliación');
   const s=(await c.query('SELECT * FROM incidencias_ampliaciones WHERE id=$1 AND incidencia_id=$2 FOR UPDATE',[solicitudId,id])).rows[0];
   if(!s)throw new ErrorNoEncontrado('Solicitud no encontrada');if(s.solicitado_por===u.id)throw new ErrorAutorizacion('No puede aprobar o rechazar su propia solicitud');
   if(s.estado!=='pendiente'||i.estado==='cerrada')throw new ErrorConflicto('La solicitud ya no admite una decisión');

@@ -2,6 +2,7 @@
 
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
+const rolDeCargo=cargo=>['administrador','jefe_operaciones','supervisor'].includes(cargo)?cargo:'operador';
 const guardarSedes=async(c,id,ids)=>{
  await c.query('DELETE FROM personal_sedes WHERE personal_id=$1',[id]);
  await c.query('INSERT INTO personal_sedes SELECT $1,unnest($2::int[])',[id,ids]);
@@ -90,11 +91,7 @@ const crear = async ({ nombres, apellidos, documento, correo, cargo, estado = 'a
     let uId = usuarioId;
     const correoNormalizado = correo.trim().toLowerCase();
     const activoBool = estado === 'activo';
-    const rolUsuario = cargo === 'jefe_operaciones'
-      ? 'jefe_operaciones'
-      : cargo === 'supervisor'
-      ? 'supervisor'
-      : 'operador';
+    const rolUsuario = rolDeCargo(cargo);
 
     const cuenta = (await client.query(
       uId ? 'SELECT id,correo,rol FROM usuarios WHERE id=$1 AND NOT eliminado FOR UPDATE'
@@ -155,11 +152,7 @@ const actualizar = async (id, { nombres, apellidos, documento, correo, cargo, es
     if(p) await client.query('UPDATE personal SET horario_inicio=$2,horario_fin=$3,dias_laborales=$4 WHERE id=$1', [id, horarioInicio || null, horarioFin || null, diasLaborales || [0,1,2,3,4,5,6]]);
     if (p && p.usuario_id) {
       const activoBool = estado === 'activo';
-      const rolUsuario = cargo === 'jefe_operaciones'
-        ? 'jefe_operaciones'
-        : cargo === 'supervisor'
-        ? 'supervisor'
-        : 'operador';
+      const rolUsuario = rolDeCargo(cargo);
       await client.query(
         `UPDATE usuarios
          SET nombre = $1, correo = COALESCE($2, correo), rol = $3, activo = $4, actualizado_en = NOW()
@@ -260,11 +253,7 @@ const reiniciarClave = async (id) => {
       [hash, p.usuario_id]
     );
   } else {
-    const rol = p.cargo === 'jefe_operaciones'
-      ? 'jefe_operaciones'
-      : p.cargo === 'supervisor'
-      ? 'supervisor'
-      : 'operador';
+    const rol = rolDeCargo(p.cargo);
     const { rows: [u] } = await pool.query(
       `INSERT INTO usuarios (nombre, correo, clave_hash, rol, activo, debe_cambiar_clave)
        VALUES ($1, $2, $3, $4, TRUE, TRUE)
